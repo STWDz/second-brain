@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.env
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+node_modules/
+webapp/dist/
+*.log
+audit.log*
+bot.log
