@@ -35,8 +35,14 @@ class Settings(BaseSettings):
     # --- LLM Provider: "groq" (бесплатно) или "openai" ---
     llm_provider: str = "groq"
 
-    # Groq (бесплатный — https://console.groq.com)
+    # Groq (безкоштовний — https://console.groq.com)
+    # Можна вказати кілька ключів через кому: GROQ_API_KEY=key1,key2,key3
     groq_api_key: str = ""
+
+    @property
+    def groq_api_keys(self) -> list[str]:
+        """Parse comma-separated Groq API keys for rotation."""
+        return [k.strip() for k in self.groq_api_key.split(",") if k.strip()]
     groq_chat_model: str = "llama-3.3-70b-versatile"
     groq_base_url: str = "https://api.groq.com/openai/v1"
 

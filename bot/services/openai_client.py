@@ -1,13 +1,24 @@
 """Multi-provider AI client: Groq (free) / OpenAI for LLM & Whisper,
-HuggingFace (free) / OpenAI for embeddings."""
+HuggingFace (free) / OpenAI for embeddings.
 
+Features:
+- Key rotation: multiple Groq keys cycled round-robin
+- Response cache: LRU with TTL to avoid duplicate API calls
+- Retry with backoff: auto-retry on 429 rate limit errors
+"""
+
+import asyncio
+import hashlib
 import io
 import json
 import logging
+import time
+from collections import OrderedDict
+from itertools import cycle
 from typing import Optional
 
 import aiohttp
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, RateLimitError
 
 from bot.config import settings
 from bot.prompts import (
@@ -24,13 +35,23 @@ from bot.prompts import (
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# LLM client (Groq or OpenAI — both use the OpenAI SDK, different base_url)
+# Key rotation: cycle through multiple Groq API keys
 # ---------------------------------------------------------------------------
+
+_groq_keys = settings.groq_api_keys or [settings.groq_api_key]
+_key_cycle = cycle(_groq_keys)
+logger.info("Groq key rotation: %d key(s) loaded", len(_groq_keys))
+
+
+def _next_groq_key() -> str:
+    """Get the next Groq API key in round-robin."""
+    return next(_key_cycle)
+
 
 def _build_llm_client() -> AsyncOpenAI:
     if settings.llm_provider == "groq":
         return AsyncOpenAI(
-            api_key=settings.groq_api_key,
+            api_key=_next_groq_key(),
             base_url=settings.groq_base_url,
         )
     return AsyncOpenAI(
@@ -39,10 +60,102 @@ def _build_llm_client() -> AsyncOpenAI:
     )
 
 
+def _rotate_llm_client() -> AsyncOpenAI:
+    """Build a new client with the next rotated key."""
+    if settings.llm_provider == "groq":
+        return AsyncOpenAI(
+            api_key=_next_groq_key(),
+            base_url=settings.groq_base_url,
+        )
+    return _build_llm_client()
+
+
 llm_client = _build_llm_client()
 
-# Groq uses "system" role; OpenAI >=2024 supports "developer"
 _SYSTEM_ROLE = "system" if settings.llm_provider == "groq" else "developer"
+
+# ---------------------------------------------------------------------------
+# Response cache: LRU with TTL (avoids duplicate API calls)
+# ---------------------------------------------------------------------------
+
+_CACHE_MAX = 128
+_CACHE_TTL = 600  # 10 minutes
+_cache: OrderedDict[str, tuple[float, str]] = OrderedDict()
+
+
+def _cache_key(model: str, messages: list[dict], temperature: float) -> str:
+    raw = json.dumps({"m": model, "msgs": messages, "t": temperature}, sort_keys=True)
+    return hashlib.md5(raw.encode()).hexdigest()
+
+
+def _cache_get(key: str) -> Optional[str]:
+    if key in _cache:
+        ts, val = _cache[key]
+        if time.time() - ts < _CACHE_TTL:
+            _cache.move_to_end(key)
+            return val
+        del _cache[key]
+    return None
+
+
+def _cache_set(key: str, value: str) -> None:
+    _cache[key] = (time.time(), value)
+    if len(_cache) > _CACHE_MAX:
+        _cache.popitem(last=False)
+
+
+# ---------------------------------------------------------------------------
+# Retry wrapper with key rotation on 429
+# ---------------------------------------------------------------------------
+
+_MAX_RETRIES = 3
+_RETRY_BASE_DELAY = 2.0  # seconds
+
+
+async def _chat_completion(
+    messages: list[dict],
+    temperature: float = 0.4,
+    max_tokens: int = 2000,
+    use_cache: bool = True,
+) -> str:
+    """Unified chat completion with cache, retry, and key rotation."""
+    global llm_client
+    model = settings.chat_model
+
+    if use_cache:
+        ck = _cache_key(model, messages, temperature)
+        cached = _cache_get(ck)
+        if cached is not None:
+            logger.debug("Cache hit for %s", ck[:8])
+            return cached
+
+    last_error = None
+    for attempt in range(_MAX_RETRIES):
+        try:
+            response = await llm_client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            result = response.choices[0].message.content or ""
+            if use_cache:
+                _cache_set(ck, result)
+            return result
+        except RateLimitError as e:
+            last_error = e
+            delay = _RETRY_BASE_DELAY * (2 ** attempt)
+            logger.warning(
+                "Rate limit (attempt %d/%d), rotating key, retry in %.1fs",
+                attempt + 1, _MAX_RETRIES, delay,
+            )
+            llm_client = _rotate_llm_client()
+            await asyncio.sleep(delay)
+        except Exception as e:
+            logger.exception("LLM call failed: %s", e)
+            raise
+
+    raise last_error or RuntimeError("All retries exhausted")
 
 # ---------------------------------------------------------------------------
 # Embeddings via HuggingFace Inference API (free) or OpenAI
@@ -104,56 +217,36 @@ async def summarize_text(text: str) -> str:
     """Summarize text using the system prompt style."""
     if len(text) > 15000:
         text = text[:15000] + "..."
-
-    response = await llm_client.chat.completions.create(
-        model=settings.chat_model,
+    return await _chat_completion(
         messages=[
             {"role": _SYSTEM_ROLE, "content": SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": SUMMARIZE_USER_TEMPLATE.format(text=text),
-            },
+            {"role": "user", "content": SUMMARIZE_USER_TEMPLATE.format(text=text)},
         ],
         temperature=0.3,
         max_tokens=1500,
     )
-    return response.choices[0].message.content or ""
 
 
 async def ask_with_context(question: str, context: str) -> str:
     """Answer a user question using RAG context."""
-    response = await llm_client.chat.completions.create(
-        model=settings.chat_model,
+    return await _chat_completion(
         messages=[
             {"role": _SYSTEM_ROLE, "content": SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": RAG_USER_TEMPLATE.format(
-                    context=context, question=question
-                ),
-            },
+            {"role": "user", "content": RAG_USER_TEMPLATE.format(context=context, question=question)},
         ],
         temperature=0.4,
         max_tokens=2000,
     )
-    return response.choices[0].message.content or ""
 
 
 async def generate_tags(text: str) -> list[str]:
     """Auto-generate smart tags for a piece of content."""
     snippet = text[:3000]
-    response = await llm_client.chat.completions.create(
-        model=settings.chat_model,
-        messages=[
-            {
-                "role": "user",
-                "content": TAG_PROMPT.format(text=snippet),
-            },
-        ],
+    raw = await _chat_completion(
+        messages=[{"role": "user", "content": TAG_PROMPT.format(text=snippet)}],
         temperature=0.2,
         max_tokens=200,
     )
-    raw = response.choices[0].message.content or "[]"
     try:
         tags = json.loads(raw)
         if isinstance(tags, list):
@@ -168,29 +261,36 @@ async def generate_tags(text: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 async def transcribe_voice(file_bytes: bytes, filename: str = "voice.ogg") -> str:
-    """Transcribe voice message using Whisper (Groq or OpenAI)."""
-    if settings.llm_provider == "groq":
-        # Groq offers free Whisper-large-v3-turbo
-        whisper_client = AsyncOpenAI(
-            api_key=settings.groq_api_key,
-            base_url=settings.groq_base_url,
-        )
-        model = "whisper-large-v3-turbo"
-    else:
-        whisper_client = AsyncOpenAI(
-            api_key=settings.openai_api_key,
-            base_url=settings.openai_base_url,
-        )
-        model = "whisper-1"
+    """Transcribe voice message using Whisper (Groq or OpenAI) with retry."""
+    global llm_client
+    for attempt in range(_MAX_RETRIES):
+        try:
+            if settings.llm_provider == "groq":
+                whisper_client = AsyncOpenAI(
+                    api_key=_next_groq_key(),
+                    base_url=settings.groq_base_url,
+                )
+                model = "whisper-large-v3-turbo"
+            else:
+                whisper_client = AsyncOpenAI(
+                    api_key=settings.openai_api_key,
+                    base_url=settings.openai_base_url,
+                )
+                model = "whisper-1"
 
-    audio_file = io.BytesIO(file_bytes)
-    audio_file.name = filename
-    response = await whisper_client.audio.transcriptions.create(
-        model=model,
-        file=audio_file,
-        prompt="Розмова українською та російською мовами. Розпізнай чітко кожне слово.",
-    )
-    return response.text
+            audio_file = io.BytesIO(file_bytes)
+            audio_file.name = filename
+            response = await whisper_client.audio.transcriptions.create(
+                model=model,
+                file=audio_file,
+                prompt="Розмова українською та російською мовами. Розпізнай чітко кожне слово.",
+            )
+            return response.text
+        except RateLimitError:
+            delay = _RETRY_BASE_DELAY * (2 ** attempt)
+            logger.warning("Whisper rate limit (attempt %d/%d), retry in %.1fs", attempt + 1, _MAX_RETRIES, delay)
+            await asyncio.sleep(delay)
+    raise RuntimeError("Whisper: all retries exhausted")
 
 
 # ---------------------------------------------------------------------------
@@ -199,16 +299,12 @@ async def transcribe_voice(file_bytes: bytes, filename: str = "voice.ogg") -> st
 
 async def generate_quiz(context: str) -> Optional[dict]:
     """Generate a quiz question from knowledge base context."""
-    response = await llm_client.chat.completions.create(
-        model=settings.chat_model,
-        messages=[
-            {"role": "user", "content": QUIZ_PROMPT.format(context=context)},
-        ],
+    raw = await _chat_completion(
+        messages=[{"role": "user", "content": QUIZ_PROMPT.format(context=context)}],
         temperature=0.7,
         max_tokens=500,
+        use_cache=False,
     )
-    raw = response.choices[0].message.content or ""
-    # Strip markdown code fences if present
     raw = raw.strip()
     if raw.startswith("```"):
         raw = raw.split("\n", 1)[-1]
@@ -232,15 +328,11 @@ async def simplify_text(text: str) -> str:
     """Re-explain text in very simple terms."""
     if len(text) > 10000:
         text = text[:10000] + "..."
-    response = await llm_client.chat.completions.create(
-        model=settings.chat_model,
-        messages=[
-            {"role": "user", "content": SIMPLIFY_PROMPT.format(text=text)},
-        ],
+    return await _chat_completion(
+        messages=[{"role": "user", "content": SIMPLIFY_PROMPT.format(text=text)}],
         temperature=0.5,
         max_tokens=1500,
     )
-    return response.choices[0].message.content or ""
 
 
 # ---------------------------------------------------------------------------
@@ -249,16 +341,15 @@ async def simplify_text(text: str) -> str:
 
 async def free_chat(user_message: str) -> str:
     """Simple chat without RAG context."""
-    response = await llm_client.chat.completions.create(
-        model=settings.chat_model,
+    return await _chat_completion(
         messages=[
             {"role": _SYSTEM_ROLE, "content": CHAT_PROMPT},
             {"role": "user", "content": user_message},
         ],
         temperature=0.7,
         max_tokens=2000,
+        use_cache=False,
     )
-    return response.choices[0].message.content or ""
 
 
 # ---------------------------------------------------------------------------
@@ -269,8 +360,7 @@ async def make_conspect(text: str) -> str:
     """Generate a structured conspect from text."""
     if len(text) > 15000:
         text = text[:15000] + "..."
-    response = await llm_client.chat.completions.create(
-        model=settings.chat_model,
+    return await _chat_completion(
         messages=[
             {"role": _SYSTEM_ROLE, "content": SYSTEM_PROMPT},
             {"role": "user", "content": CONSPECT_PROMPT.format(text=text)},
@@ -278,4 +368,3 @@ async def make_conspect(text: str) -> str:
         temperature=0.3,
         max_tokens=3000,
     )
-    return response.choices[0].message.content or ""
