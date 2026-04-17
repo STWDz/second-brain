@@ -30,16 +30,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Security audit log → separate file
+# Security audit log → separate file (skip if filesystem is read-only, e.g. Fly.io)
 audit_logger = logging.getLogger("audit")
 audit_logger.setLevel(logging.INFO)
-_audit_handler = logging.handlers.RotatingFileHandler(
-    "audit.log", maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
-)
-_audit_handler.setFormatter(
-    logging.Formatter("%(asctime)s | %(message)s")
-)
-audit_logger.addHandler(_audit_handler)
+try:
+    _audit_handler = logging.handlers.RotatingFileHandler(
+        "audit.log", maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
+    )
+    _audit_handler.setFormatter(
+        logging.Formatter("%(asctime)s | %(message)s")
+    )
+    audit_logger.addHandler(_audit_handler)
+except OSError:
+    audit_logger.addHandler(logging.StreamHandler())
 
 
 async def main() -> None:

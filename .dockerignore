@@ -1,0 +1,12 @@
+.venv/
+venv/
+node_modules/
+webapp/node_modules/
+__pycache__/
+*.pyc
+.git/
+.env
+*.log
+audit.log*
+bot.log
+.fly/
