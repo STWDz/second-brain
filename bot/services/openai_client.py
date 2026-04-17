@@ -283,7 +283,7 @@ async def transcribe_voice(file_bytes: bytes, filename: str = "voice.ogg") -> st
             response = await whisper_client.audio.transcriptions.create(
                 model=model,
                 file=audio_file,
-                prompt="Розмова українською та російською мовами. Розпізнай чітко кожне слово.",
+                prompt="Transcribe exactly in the language spoken. Розпізнай чітко кожне слово тією мовою, якою говорять.",
             )
             return response.text
         except RateLimitError:
