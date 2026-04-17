@@ -16,7 +16,7 @@ from youtube_transcript_api import YouTubeTranscriptApi
 logger = logging.getLogger(__name__)
 
 YOUTUBE_REGEX = re.compile(
-    r"(?:https?://)?(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)([\w-]{11})"
+    r"(?:https?://)?(?:www\.)?(?:youtube\.com/(?:watch\?v=|shorts/|live/)|youtu\.be/)([\w-]{11})"
 )
 
 # ── SSRF protection ────────────────────────────────────────────────────────
@@ -89,7 +89,7 @@ async def extract_from_youtube(url: str) -> Optional[str]:
         return None
     try:
         api = YouTubeTranscriptApi()
-        result = api.fetch(video_id, languages=["ru", "en"])
+        result = api.fetch(video_id, languages=["uk", "ru", "en"])
         text = " ".join(snippet.text for snippet in result.snippets)
         return text
     except Exception as e:

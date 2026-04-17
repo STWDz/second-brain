@@ -201,16 +201,21 @@ async def handle_text(message: types.Message) -> None:
     source_type = detect_source_type(text)
 
     if source_type == "youtube":
+        wait_yt = await message.answer("📺 Витягую субтитри з YouTube...")
         extracted = await extract_from_youtube(text)
+        await wait_yt.delete()
         if not extracted:
-            await message.answer("❌ Не вдалося отримати субтитри з YouTube.")
+            await message.answer(
+                "❌ Не вдалося отримати субтитри з YouTube.\n"
+                "Можливо, у цього відео немає субтитрів."
+            )
             return
         await _process_text_content(
             message,
             text=extracted,
             source_url=text,
             source_type="youtube",
-            title=f"YouTube: {text}",
+            title=f"📺 YouTube",
         )
         return
 
