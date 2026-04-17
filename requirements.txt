@@ -6,7 +6,7 @@ alembic==1.14.0
 pgvector==0.3.6
 openai==1.57.0
 trafilatura==2.0.0
-youtube-transcript-api==0.6.3
+youtube-transcript-api>=1.2.4
 PyMuPDF==1.25.1
 python-dotenv==1.0.1
 apscheduler==3.10.4

@@ -14,7 +14,7 @@ from bot.services.content import (
     extract_from_url,
     extract_from_youtube,
 )
-from bot.services.openai_client import generate_tags, summarize_text
+from bot.services.openai_client import free_chat, generate_tags, summarize_text
 from bot.services.rag import embed_and_store_chunks
 
 logger = logging.getLogger(__name__)
@@ -227,21 +227,18 @@ async def handle_text(message: types.Message) -> None:
         )
         return
 
-    # Plain text — treat as a note if long enough
-    if len(text) > 20:
-        await _process_text_content(
-            message,
-            text=text,
-            source_url=None,
-            source_type="text",
-            title=None,
-        )
-    else:
-        await message.answer(
-            "💡 Отправь ссылку, PDF, фото, голосовое или текст (>20 символов) для сохранения.\n"
-            "Для вопросов: /ask • Чат: /chat • Квиз: /quiz",
-            parse_mode="HTML",
-        )
+    # Plain text — always chat with AI
+    # To save as note, use "заметка:" prefix
+    if len(text) > 2:
+        wait_msg = await message.answer("💭 Думаю...")
+        try:
+            answer = await free_chat(text)
+            await wait_msg.delete()
+            await message.answer(answer, parse_mode="HTML")
+        except Exception as e:
+            logger.exception("Chat error: %s", e)
+            await wait_msg.delete()
+            await message.answer("❌ Ошибка. Попробуй ещё раз.")
 
 
 @router.message(F.photo)

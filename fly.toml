@@ -1,0 +1,12 @@
+app = "stwdz-second-brain"
+primary_region = "ams"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # Secrets (BOT_TOKEN, API keys, DATABASE_URL) are set via `flyctl secrets set`
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

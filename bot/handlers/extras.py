@@ -25,7 +25,7 @@ from bot.db.repositories import (
     search_documents_text,
     toggle_pin,
 )
-from bot.services.openai_client import free_chat, generate_quiz, simplify_text
+from bot.services.openai_client import free_chat, generate_quiz, make_conspect, simplify_text
 from bot.services.rag import retrieve_context
 
 logger = logging.getLogger(__name__)
@@ -369,6 +369,39 @@ async def cmd_chat(message: types.Message, command: CommandObject) -> None:
     answer = await free_chat(text)
     await wait_msg.delete()
     await message.answer(answer, parse_mode="HTML")
+
+
+# ── /conspect ── Generate structured conspect from text ───────────────────
+
+@router.message(Command("conspect"))
+async def cmd_conspect(message: types.Message, command: CommandObject) -> None:
+    text = command.args
+    # Also support reply to a message
+    if not text and message.reply_to_message and message.reply_to_message.text:
+        text = message.reply_to_message.text
+    if not text or len(text.strip()) < 30:
+        await message.answer(
+            "📋 Используй: /conspect <i>текст</i>\n\n"
+            "Или ответь на сообщение командой /conspect — сделаю конспект.\n"
+            "Минимум 30 символов.",
+            parse_mode="HTML",
+        )
+        return
+
+    wait_msg = await message.answer("📋 Делаю конспект...")
+    try:
+        result = await make_conspect(text)
+        await wait_msg.delete()
+        # Split if too long for Telegram (4096 chars)
+        if len(result) > 4000:
+            for i in range(0, len(result), 4000):
+                await message.answer(result[i:i+4000], parse_mode="Markdown")
+        else:
+            await message.answer(result, parse_mode="Markdown")
+    except Exception as e:
+        logger.exception("Conspect error: %s", e)
+        await wait_msg.delete()
+        await message.answer("❌ Не удалось сделать конспект. Попробуй ещё раз.")
 
 
 # ── /search ── Text search across notes ────────────────────────────────────

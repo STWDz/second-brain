@@ -12,6 +12,7 @@ from openai import AsyncOpenAI
 from bot.config import settings
 from bot.prompts import (
     CHAT_PROMPT,
+    CONSPECT_PROMPT,
     QUIZ_PROMPT,
     RAG_USER_TEMPLATE,
     SIMPLIFY_PROMPT,
@@ -256,5 +257,25 @@ async def free_chat(user_message: str) -> str:
         ],
         temperature=0.7,
         max_tokens=2000,
+    )
+    return response.choices[0].message.content or ""
+
+
+# ---------------------------------------------------------------------------
+# Conspect generation
+# ---------------------------------------------------------------------------
+
+async def make_conspect(text: str) -> str:
+    """Generate a structured conspect from text."""
+    if len(text) > 15000:
+        text = text[:15000] + "..."
+    response = await llm_client.chat.completions.create(
+        model=settings.chat_model,
+        messages=[
+            {"role": _SYSTEM_ROLE, "content": SYSTEM_PROMPT},
+            {"role": "user", "content": CONSPECT_PROMPT.format(text=text)},
+        ],
+        temperature=0.3,
+        max_tokens=3000,
     )
     return response.choices[0].message.content or ""

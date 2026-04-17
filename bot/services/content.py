@@ -88,14 +88,9 @@ async def extract_from_youtube(url: str) -> Optional[str]:
     if not video_id:
         return None
     try:
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-        # Try to get Russian first, then any available
-        try:
-            transcript = transcript_list.find_transcript(["ru", "en"])
-        except Exception:
-            transcript = transcript_list.find_generated_transcript(["ru", "en"])
-        parts = transcript.fetch()
-        text = " ".join(part["text"] for part in parts)
+        api = YouTubeTranscriptApi()
+        result = api.fetch(video_id, languages=["ru", "en"])
+        text = " ".join(snippet.text for snippet in result.snippets)
         return text
     except Exception as e:
         logger.error("Failed to extract YouTube %s: %s", video_id, e)
