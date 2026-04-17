@@ -1,16 +1,17 @@
 <div align="center">
 
-# 🧠 Second Brain
+# 🧠 Cortex
 
 **AI-powered Telegram Knowledge Assistant**
 
-Сохраняй статьи, видео, PDF и голосовые в личную базу знаний.
-Ищи по смыслу, проходи квизы, получай выжимки — всё через Telegram.
+Зберігай статті, відео, PDF і голосові в особисту базу знань.
+Шукай за змістом, проходь квізи, отримуй витяги — все через Telegram.
+Просто напиши — відповім як ІІ.
 
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![Aiogram](https://img.shields.io/badge/Aiogram-3.13-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://aiogram.dev)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16_+_pgvector-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://docker.com)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
+[![Fly.io](https://img.shields.io/badge/Fly.io-Deployed-8B5CF6?style=for-the-badge&logo=fly.io&logoColor=white)](https://fly.io)
 [![React](https://img.shields.io/badge/React-Mini_App-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://reactjs.org)
 [![License](https://img.shields.io/badge/License-MIT_+_Commons_Clause-yellow?style=for-the-badge)](LICENSE)
 
@@ -21,47 +22,51 @@
 ## Demo
 
 ```
-Ты:     https://habr.com/ru/articles/...
-Бот:    ✅ Сохранено!
-        🎯 Главная мысль: ...
-        💡 3 ключевых инсайта: ...
-        🏷 #разработка #архитектура
-        📦 4 фрагмента в базе знаний
-        [ 🧒 Проще ] [ 📌 Закрепить ] [ 🗑 Удалить ]
+Ти:     https://habr.com/ru/articles/...
+Бот:    ✅ Збережено!
+        🎯 Головна думка: ...
+        💡 3 ключових інсайти: ...
+        🏷 #розробка #архітектура
+        📦 4 фрагменти у базі знань
+        [ 🧒 Простіше ] [ 📌 Закріпити ] [ 🗑 Видалити ]
 
-Ты:     /ask как работает dependency injection?
-Бот:    На основе твоих заметок: ...
+Ти:     /ask як працює dependency injection?
+Бот:    На основі твоїх нотаток: ...
 
-Ты:     @BotName docker volumes     ← из любого чата
-Бот:    🔗 Docker: Persistent Storage — ...
+Ти:     привіт, що таке docker?
+Бот:    Docker — це платформа для контейнеризації...
+
+Ти:     🎙 (голосове повідомлення)
+Бот:    � Розшифровка: ...
 ```
 
 ---
 
-## Что умеет
+## Що вміє
 
 <table>
 <tr>
 <td width="50%">
 
-### 📥 Приём контента
-- 🔗 Ссылки на статьи → AI-выжимка
-- 📺 YouTube → субтитры → саммари
-- 📄 PDF-файлы → извлечение + обработка
-- 🎙 Голосовые / кружки → Whisper STT
-- 📸 Фото с подписью → заметка
-- 💬 Пересланные сообщения → автосохранение
+### 📥 Прийом контенту
+- 🔗 Посилання на статті → AI-витяг
+- 📺 YouTube → субтитри → саммарі
+- 📄 PDF-файли → витяг + обробка
+- 🎙 Голосові / кружки → Whisper розшифровка
+- 📸 Фото з підписом → нотатка
+- 💬 Переслані повідомлення → автозбереження
+- 💭 Просто текст → ІІ-чат
 
 </td>
 <td width="50%">
 
-### 🔧 Команды
-- `/ask` — RAG-поиск по базе знаний
-- `/search` — текстовый поиск
-- `/chat` — свободный чат с AI
-- `/quiz` — квиз по заметкам
-- `/random` — случайная заметка
-- `/pinned` — закреплённые
+### 🔧 Команди
+- `/ask` — RAG-пошук по базі знань
+- `/search` — текстовий пошук
+- `/conspect` — конспект з тексту
+- `/quiz` — квіз по нотатках
+- `/random` — випадкова нотатка
+- `/pinned` — закріплені
 - `/stats` `/export` `/tags`
 
 </td>
@@ -70,14 +75,14 @@
 <td>
 
 ### 🌐 Inline-режим
-Набери `@BotName запрос` в **любом** чате — мгновенный поиск по твоей базе знаний
+Набери `@BotName запит` в **будь-якому** чаті — миттєвий пошук по твоїй базі знань
 
 </td>
 <td>
 
-### 📊 Дайджесты
-- **Daily** — случайная старая заметка (spaced repetition)
-- **Weekly** — итоги недели + рост базы
+### 📊 Дайджести
+- **Daily** — випадкова стара нотатка (spaced repetition)
+- **Weekly** — підсумки тижня + зростання бази
 
 </td>
 </tr>
@@ -85,7 +90,7 @@
 
 ---
 
-## Архитектура
+## Архітектура
 
 ```
                           ┌──────────────────────────────┐
@@ -127,75 +132,75 @@
 
 ---
 
-## Стек технологий
+## Технологічний стек
 
-| Слой | Технология | Зачем |
+| Шар | Технологія | Навіщо |
 |:-----|:-----------|:------|
-| Runtime | **Python 3.12**, asyncio | Полностью асинхронная архитектура |
+| Runtime | **Python 3.12**, asyncio | Повністю асинхронна архітектура |
 | Bot | **Aiogram 3.13** | Middleware pipeline, inline mode, callbacks |
-| LLM | **Groq** — Llama 3.3 70B | Суммаризация, теги, квизы, чат |
+| LLM | **Groq** — Llama 3.3 70B | Саммарі, теги, квізи, чат, конспекти |
 | STT | **Groq Whisper** large-v3-turbo | Голос → текст |
-| Embeddings | **HuggingFace** BAAI/bge-small (384d) | Векторные эмбеддинги для RAG |
-| Database | **PostgreSQL 16** + pgvector | Данные + ANN-поиск (IVFFlat cosine) |
-| ORM | **SQLAlchemy 2.0** async + Alembic | Модели, миграции |
+| Embeddings | **HuggingFace** BAAI/bge-small (384d) | Векторні ембедінги для RAG |
+| Database | **Neon.tech** PostgreSQL + pgvector | Дані + ANN-пошук (IVFFlat cosine) |
+| ORM | **SQLAlchemy 2.0** async + Alembic | Моделі, міграції |
 | Web API | **aiohttp** | REST для Mini App, HMAC-SHA256 auth |
-| Frontend | **React** + Vite + TailwindCSS | Telegram Web App с нативной темой |
-| Extraction | trafilatura, youtube-transcript-api, PyMuPDF | Парсинг контента |
+| Frontend | **React** + Vite + TailwindCSS | Telegram Web App з нативною темою |
+| Extraction | trafilatura, youtube-transcript-api, PyMuPDF | Парсинг контенту |
 | Scheduler | **APScheduler** | Daily & Weekly Digest |
-| Deploy | **Docker Compose** | Hardened: read-only FS, healthcheck, no ports |
+| Deploy | **Fly.io** + Docker | Multi-stage build, Neon DB |
 
-> 💰 **Стоимость: $0** — Groq + HuggingFace бесплатны. Переключение на OpenAI — одна переменная.
+> 💰 **Вартість: $0** — Groq + HuggingFace + Neon + Fly.io безкоштовні. Переключення на OpenAI — одна змінна.
 
 ---
 
 ## RAG Pipeline
 
 ```
- Сохранение:
+ Збереження:
  ───────────
  Текст ──→ Chunking (800 chars, 100 overlap)
        ──→ HuggingFace API ──→ Vector(384) per chunk
        ──→ INSERT INTO chunks (content, embedding)
 
- Поиск:
+ Пошук:
  ──────
- /ask вопрос ──→ get_embedding(question)
+ /ask питання ──→ get_embedding(question)
              ──→ ORDER BY embedding <=> query LIMIT 5
-             ──→ Контекст ──→ LLM + System Prompt ──→ Ответ
+             ──→ Контекст ──→ LLM + System Prompt ──→ Відповідь
 ```
 
 ---
 
-## Безопасность
+## Безпека
 
 <table>
 <tr>
 <td width="50%">
 
-### 🛡 Bot Middleware (7 слоёв)
+### 🛡 Bot Middleware (7 шарів)
 
-| # | Middleware | Защита |
+| # | Middleware | Захист |
 |:-:|:----------|:-------|
-| 1 | **PrivateOnly** | Блок групп/каналов |
-| 2 | **Whitelist** | Только свои user_id |
-| 3 | **AntiSpam** | 3 повтора / 30 сек |
-| 4 | **RateLimit** | 15 событий / мин |
-| 5 | **FileSize** | Лимит 20 МБ |
-| 6 | **Sanitize** | Макс 50K символов |
-| 7 | **AuditLog** | Всё в audit.log |
+| 1 | **PrivateOnly** | Блок груп/каналів |
+| 2 | **Whitelist** | Тільки свої user_id |
+| 3 | **AntiSpam** | 3 повтори / 30 сек |
+| 4 | **RateLimit** | 15 подій / хв |
+| 5 | **FileSize** | Ліміт 20 МБ |
+| 6 | **Sanitize** | Макс 50K символів |
+| 7 | **AuditLog** | Все в audit.log |
 
 </td>
 <td width="50%">
 
 ### 🔐 Web API & Infra
 
-- **HMAC-SHA256** валидация initData (no fallback)
-- **127.0.0.1** binding — API не в интернете
+- **HMAC-SHA256** валідація initData (no fallback)
+- **127.0.0.1** binding — API не в інтернеті
 - **30 req/min** per IP rate limit
 - **Security headers**: CSP, X-Frame DENY, nosniff
 - **SSRF protection**: блок private IP, DNS resolve
-- **Docker**: no ports, read-only FS, healthcheck
-- **Ownership check** на всех мутациях
+- **Docker**: multi-stage build, minimal image
+- **Ownership check** на всіх мутаціях
 
 </td>
 </tr>
@@ -203,7 +208,7 @@
 
 ---
 
-## Модели данных
+## Моделі даних
 
 ```sql
 users                    documents                    chunks
@@ -217,23 +222,23 @@ users                    documents                    chunks
                          ├── is_pinned
                          └── created_at
 
- Связи: users 1:N documents 1:N chunks
- Удаление: ON DELETE CASCADE (каскадное)
- Изоляция: все запросы фильтруются по user_id
+ Зв'язки: users 1:N documents 1:N chunks
+ Видалення: ON DELETE CASCADE (каскадне)
+ Ізоляція: всі запити фільтруються по user_id
 ```
 
 ---
 
-## Структура проекта
+## Структура проєкту
 
 ```
-second-brain/
+cortex/
 │
 ├── bot/
 │   ├── __main__.py             Entry point + middleware registration
 │   ├── config.py               Pydantic Settings (15+ params)
 │   ├── middlewares.py           7-layer security stack
-│   ├── prompts.py              6 AI prompt templates
+│   ├── prompts.py              7 AI prompt templates (🇺🇦 Ukrainian)
 │   ├── scheduler.py            Daily + Weekly Digest
 │   ├── webapp_api.py           REST API + HMAC + rate limiting
 │   │
@@ -264,32 +269,40 @@ second-brain/
 
 ---
 
-## Быстрый старт
+## Швидкий старт
 
-### 1. API-ключи (бесплатно)
+### 1. API-ключі (безкоштовно)
 
-| Сервис | Ссылка | Что получишь |
+| Сервіс | Посилання | Що отримаєш |
 |:-------|:-------|:-------------|
 | Telegram | [@BotFather](https://t.me/BotFather) → `/newbot` | `BOT_TOKEN` |
 | Groq | [console.groq.com](https://console.groq.com) | `GROQ_API_KEY` |
 | HuggingFace | [hf.co/settings/tokens](https://huggingface.co/settings/tokens) | `HF_API_KEY` |
 
-### 2. Запуск
+### 2. Запуск (локально)
 
 ```bash
 git clone https://github.com/STWDZ/second-brain.git
 cd second-brain
 
-cp .env.example .env    # ← заполни 3 ключа
+cp .env.example .env    # ← заповни 3 ключі
 
 docker compose up -d    # PostgreSQL + бот — готово
 ```
 
-### 3. Mini App (опционально)
+### 3. Deploy на Fly.io (безкоштовно)
+
+```bash
+flyctl launch
+flyctl secrets set BOT_TOKEN=... GROQ_API_KEY=... HF_API_KEY=... DATABASE_URL=...
+flyctl deploy
+```
+
+### 4. Mini App (опціонально)
 
 ```bash
 cd webapp && npm install && npm run build
-# Deploy webapp/dist на HTTPS → указать WEBAPP_URL в .env
+# Deploy webapp/dist на HTTPS → вказати WEBAPP_URL в .env
 ```
 
 ---
@@ -298,16 +311,16 @@ cd webapp && npm install && npm run build
 
 <div align="center">
 
-| | Количество |
+| | Кількість |
 |:--|:--:|
-| **Python-файлов** | 16 |
-| **Строк кода** | ~1 800 |
-| **Handlers** | 16 |
+| **Python-файлів** | 16 |
+| **Рядків коду** | ~2 000 |
+| **Handlers** | 17 |
 | **Middleware** | 7 |
 | **Repository functions** | 14 |
-| **Bot commands** | 12 |
-| **Content types** | 6 |
-| **AI prompts** | 6 |
+| **Bot commands** | 13 |
+| **Content types** | 7 |
+| **AI prompts** | 7 |
 | **Dependencies** | 14 |
 
 </div>
@@ -316,13 +329,15 @@ cd webapp && npm install && npm run build
 
 ## Roadmap
 
+- [x] Деплой на Fly.io + Neon.tech
+- [x] ІІ-чат без команд
+- [x] Конспекти /conspect
+- [x] Українська локалізація
 - [ ] Webhook mode (Nginx reverse proxy)
-- [ ] PostgreSQL FTS с GIN-индексом
-- [ ] Redis кэш эмбеддингов
-- [ ] TTS — голосовые ответы
+- [ ] Redis кеш ембедінгів
+- [ ] TTS — голосові відповіді
 - [ ] Notion / Obsidian sync
 - [ ] Admin-панель
-- [ ] Prometheus + Grafana мониторинг
 
 ---
 
@@ -330,7 +345,7 @@ cd webapp && npm install && npm run build
 
 ## License
 
-**MIT with Commons Clause** — смотреть и учиться можно, продавать и выдавать за своё нельзя.
+**MIT with Commons Clause** — дивитись і вчитись можна, продавати і видавати за своє не можна.
 
 Made with 🧠 by **STWDZ**
 

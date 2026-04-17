@@ -44,7 +44,7 @@ TYPE_EMOJI = {
 
 @router.message(Command("quiz"))
 async def cmd_quiz(message: types.Message) -> None:
-    wait_msg = await message.answer("🧩 Генерирую вопрос из твоей базы знаний...")
+    wait_msg = await message.answer("🧩 Генерую питання з твоєї бази знань...")
 
     async with async_session() as session:
         user = await get_or_create_user(session, telegram_id=message.from_user.id)
@@ -53,7 +53,7 @@ async def cmd_quiz(message: types.Message) -> None:
 
     if not doc or not doc.summary:
         await wait_msg.delete()
-        await message.answer("📭 Мало данных для квиза. Сохрани больше материалов!")
+        await message.answer("📭 Мало даних для квізу. Збережи більше матеріалів!")
         return
 
     context = doc.summary
@@ -61,14 +61,14 @@ async def cmd_quiz(message: types.Message) -> None:
 
     if not quiz:
         await wait_msg.delete()
-        await message.answer("😅 Не получилось сгенерировать вопрос. Попробуй ещё раз!")
+        await message.answer("😅 Не вдалося згенерувати питання. Спробуй ще раз!")
         return
 
     options = quiz["options"]
     correct = quiz["correct"]
     explanation = quiz.get("explanation", "")
 
-    text = f"🧩 <b>Квиз по твоим заметкам</b>\n\n❓ {quiz['question']}\n\n"
+    text = f"🧩 <b>Квіз по твоїх нотатках</b>\n\n❓ {quiz['question']}\n\n"
     for key in ["A", "B", "C", "D"]:
         text += f"  <b>{key}.</b> {options.get(key, '—')}\n"
 
@@ -99,15 +99,15 @@ async def quiz_callback(callback: CallbackQuery) -> None:
     chosen, correct, owner_id = parts[1], parts[2], parts[3]
 
     if str(callback.from_user.id) != owner_id:
-        await callback.answer("Это не твой квиз! 😏", show_alert=True)
+        await callback.answer("Це не твій квіз! 😏", show_alert=True)
         return
 
     if chosen == correct:
-        await callback.answer("✅ Правильно! Мозг на месте 🧠", show_alert=True)
-        result_text = f"\n\n✅ Ответ <b>{correct}</b> — правильно!"
+        await callback.answer("✅ Правильно! Мозок на місці 🧠", show_alert=True)
+        result_text = f"\n\n✅ Відповідь <b>{correct}</b> — правильно!"
     else:
-        await callback.answer(f"❌ Неправильно. Ответ: {correct}", show_alert=True)
-        result_text = f"\n\n❌ Ты ответил <b>{chosen}</b>, правильно: <b>{correct}</b>"
+        await callback.answer(f"❌ Неправильно. Відповідь: {correct}", show_alert=True)
+        result_text = f"\n\n❌ Ти відповів <b>{chosen}</b>, правильно: <b>{correct}</b>"
 
     # Update message to show result
     old_text = callback.message.text or callback.message.html_text or ""
@@ -125,7 +125,7 @@ async def cmd_stats(message: types.Message) -> None:
         stats = await get_user_stats(session, user.id)
 
     if stats["total"] == 0:
-        await message.answer("📊 У тебя пока нет статистики. Сохрани что-нибудь!")
+        await message.answer("📊 У тебе поки немає статистики. Збережи щось!")
         return
 
     by_type = stats["by_type"]
@@ -139,15 +139,15 @@ async def cmd_stats(message: types.Message) -> None:
     # Brain level
     total = stats["total"]
     if total < 5:
-        level = "🌱 Росток"
+        level = "🌱 Паросток"
     elif total < 20:
-        level = "🌿 Растущий мозг"
+        level = "🌿 Зростаючий мозок"
     elif total < 50:
-        level = "🧠 Умный мозг"
+        level = "🧠 Розумний мозок"
     elif total < 100:
-        level = "🔬 Мега-мозг"
+        level = "🔬 Мега-мозок"
     else:
-        level = "🏆 Гений"
+        level = "🏆 Геній"
 
     bar_fill = min(total, 100)
     bar = "█" * (bar_fill // 5) + "░" * (20 - bar_fill // 5)
@@ -155,15 +155,15 @@ async def cmd_stats(message: types.Message) -> None:
     first = stats["first_save"].strftime("%d.%m.%Y") if stats["first_save"] else "—"
 
     text = (
-        f"📊 <b>Статистика твоего Second Brain</b>\n\n"
-        f"🎖 Уровень: <b>{level}</b>\n"
+        f"📊 <b>Статистика твого Cortex</b>\n\n"
+        f"🎖 Рівень: <b>{level}</b>\n"
         f"<code>[{bar}]</code> {total}/100\n\n"
-        f"📚 Всего материалов: <b>{total}</b>\n"
+        f"📚 Всього матеріалів: <b>{total}</b>\n"
         + "\n".join(type_lines) + "\n\n"
-        f"🧩 Фрагментов в памяти: <b>{stats['total_chunks']}</b>\n"
-        f"🏷 Уникальных тегов: <b>{stats['tags_count']}</b>\n"
+        f"🧩 Фрагментів у памʼяті: <b>{stats['total_chunks']}</b>\n"
+        f"🏷 Унікальних тегів: <b>{stats['tags_count']}</b>\n"
         f"🔝 Топ теги: {tags_line}\n\n"
-        f"📅 С нами с: {first}"
+        f"📅 З нами з: {first}"
     )
     await message.answer(text, parse_mode="HTML")
 
@@ -177,7 +177,7 @@ async def cmd_random(message: types.Message) -> None:
         doc = await get_random_document(session, user.id)
 
     if not doc:
-        await message.answer("📭 База знаний пуста. Сохрани что-нибудь!")
+        await message.answer("📭 База знань порожня. Збережи щось!")
         return
 
     tags = ""
@@ -188,7 +188,7 @@ async def cmd_random(message: types.Message) -> None:
             pass
 
     emoji = TYPE_EMOJI.get(doc.source_type, "📄")
-    text = f"🎲 <b>Случайная заметка</b>\n\n{emoji} <b>{doc.title or 'Без названия'}</b>\n"
+    text = f"🎲 <b>Випадкова нотатка</b>\n\n{emoji} <b>{doc.title or 'Без назви'}</b>\n"
     if doc.source_url:
         text += f"🔗 {doc.source_url}\n"
     if doc.summary:
@@ -199,8 +199,8 @@ async def cmd_random(message: types.Message) -> None:
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="🎲 Ещё", callback_data=f"random:{message.from_user.id}"),
-                InlineKeyboardButton(text="🗑 Удалить", callback_data=f"del:{doc.id}:{message.from_user.id}"),
+                InlineKeyboardButton(text="🎲 Ще", callback_data=f"random:{message.from_user.id}"),
+                InlineKeyboardButton(text="🗑 Видалити", callback_data=f"del:{doc.id}:{message.from_user.id}"),
             ]
         ]
     )
@@ -211,7 +211,7 @@ async def cmd_random(message: types.Message) -> None:
 async def random_callback(callback: CallbackQuery) -> None:
     owner_id = callback.data.split(":")[1]
     if str(callback.from_user.id) != owner_id:
-        await callback.answer("Это не твоя кнопка 😏", show_alert=True)
+        await callback.answer("Це не твоя кнопка 😏", show_alert=True)
         return
 
     async with async_session() as session:
@@ -219,7 +219,7 @@ async def random_callback(callback: CallbackQuery) -> None:
         doc = await get_random_document(session, user.id)
 
     if not doc:
-        await callback.answer("Больше ничего нет!", show_alert=True)
+        await callback.answer("Більше нічого немає!", show_alert=True)
         return
 
     tags = ""
@@ -230,7 +230,7 @@ async def random_callback(callback: CallbackQuery) -> None:
             pass
 
     emoji = TYPE_EMOJI.get(doc.source_type, "📄")
-    text = f"🎲 <b>Случайная заметка</b>\n\n{emoji} <b>{doc.title or 'Без названия'}</b>\n"
+    text = f"🎲 <b>Випадкова нотатка</b>\n\n{emoji} <b>{doc.title or 'Без назви'}</b>\n"
     if doc.source_url:
         text += f"🔗 {doc.source_url}\n"
     if doc.summary:
@@ -241,8 +241,8 @@ async def random_callback(callback: CallbackQuery) -> None:
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="🎲 Ещё", callback_data=f"random:{callback.from_user.id}"),
-                InlineKeyboardButton(text="🗑 Удалить", callback_data=f"del:{doc.id}:{callback.from_user.id}"),
+                InlineKeyboardButton(text="🎲 Ще", callback_data=f"random:{callback.from_user.id}"),
+                InlineKeyboardButton(text="🗑 Видалити", callback_data=f"del:{doc.id}:{callback.from_user.id}"),
             ]
         ]
     )
@@ -260,7 +260,7 @@ async def delete_callback(callback: CallbackQuery) -> None:
     doc_id, owner_id = int(parts[1]), parts[2]
 
     if str(callback.from_user.id) != owner_id:
-        await callback.answer("Это не твоя кнопка 😏", show_alert=True)
+        await callback.answer("Це не твоя кнопка 😏", show_alert=True)
         return
 
     # Verify document actually belongs to the user (defence in depth)
@@ -268,17 +268,17 @@ async def delete_callback(callback: CallbackQuery) -> None:
         user = await get_or_create_user(session, telegram_id=callback.from_user.id)
         doc = await get_document_by_id(session, doc_id)
         if not doc or doc.user_id != user.id:
-            await callback.answer("Документ не найден или не принадлежит тебе.", show_alert=True)
+            await callback.answer("Документ не знайдено або він не твій.", show_alert=True)
             return
 
         deleted = await delete_document(session, doc_id)
         await session.commit()
 
     if deleted:
-        await callback.message.edit_text("🗑 <b>Удалено из базы знаний.</b>", parse_mode="HTML")
-        await callback.answer("Удалено!")
+        await callback.message.edit_text("🗑 <b>Видалено з бази знань.</b>", parse_mode="HTML")
+        await callback.answer("Видалено!")
     else:
-        await callback.answer("Уже удалено", show_alert=True)
+        await callback.answer("Вже видалено", show_alert=True)
 
 
 # ── Simplify callback ─────────────────────────────────────────────────────
@@ -291,10 +291,10 @@ async def simplify_callback(callback: CallbackQuery) -> None:
     doc_id, owner_id = int(parts[1]), parts[2]
 
     if str(callback.from_user.id) != owner_id:
-        await callback.answer("Это не твоя кнопка 😏", show_alert=True)
+        await callback.answer("Це не твоя кнопка 😏", show_alert=True)
         return
 
-    await callback.answer("🔄 Упрощаю...")
+    await callback.answer("🔄 Спрощую...")
 
     # Verify ownership
     async with async_session() as session:
@@ -302,12 +302,12 @@ async def simplify_callback(callback: CallbackQuery) -> None:
         doc = await get_document_by_id(session, doc_id)
 
     if not doc or doc.user_id != user.id or not doc.summary:
-        await callback.message.answer("Нечего упрощать.")
+        await callback.message.answer("Нема що спрощувати.")
         return
 
     simple = await simplify_text(doc.summary)
     await callback.message.answer(
-        f"🧒 <b>Объясняю проще:</b>\n\n{simple}", parse_mode="HTML"
+        f"🧒 <b>Пояснюю простіше:</b>\n\n{simple}", parse_mode="HTML"
     )
 
 
@@ -315,7 +315,7 @@ async def simplify_callback(callback: CallbackQuery) -> None:
 
 @router.message(Command("export"))
 async def cmd_export(message: types.Message) -> None:
-    wait_msg = await message.answer("📦 Готовлю экспорт...")
+    wait_msg = await message.answer("📦 Готую експорт...")
 
     async with async_session() as session:
         user = await get_or_create_user(session, telegram_id=message.from_user.id)
@@ -323,14 +323,14 @@ async def cmd_export(message: types.Message) -> None:
 
     if not docs:
         await wait_msg.delete()
-        await message.answer("📭 Нечего экспортировать.")
+        await message.answer("📭 Нема що експортувати.")
         return
 
-    md_lines = ["# 🧠 Second Brain — Экспорт\n"]
+    md_lines = ["# 🧠 Cortex — Експорт\n"]
     for doc in docs:
         emoji = TYPE_EMOJI.get(doc.source_type, "📄")
         date_str = doc.created_at.strftime("%d.%m.%Y %H:%M") if doc.created_at else ""
-        md_lines.append(f"\n---\n\n## {emoji} {doc.title or 'Без названия'}\n")
+        md_lines.append(f"\n---\n\n## {emoji} {doc.title or 'Без назви'}\n")
         md_lines.append(f"📅 {date_str}\n")
         if doc.source_url:
             md_lines.append(f"🔗 [{doc.source_url}]({doc.source_url})\n")
@@ -349,7 +349,7 @@ async def cmd_export(message: types.Message) -> None:
     )
 
     await wait_msg.delete()
-    await message.answer_document(file, caption=f"📦 Экспорт: {len(docs)} заметок")
+    await message.answer_document(file, caption=f"📦 Експорт: {len(docs)} нотаток")
 
 
 # ── /chat ── Free chat with AI ────────────────────────────────────────────
@@ -359,8 +359,8 @@ async def cmd_chat(message: types.Message, command: CommandObject) -> None:
     text = command.args
     if not text:
         await message.answer(
-            "💬 Используй: /chat <i>что угодно</i>\n\n"
-            "Свободный чат с ИИ — без базы знаний, просто разговор.",
+            "💬 Використовуй: /chat <i>будь-що</i>\n\n"
+            "Вільний чат з ІІ — без бази знань, просто розмова.",
             parse_mode="HTML",
         )
         return
@@ -381,14 +381,14 @@ async def cmd_conspect(message: types.Message, command: CommandObject) -> None:
         text = message.reply_to_message.text
     if not text or len(text.strip()) < 30:
         await message.answer(
-            "📋 Используй: /conspect <i>текст</i>\n\n"
-            "Или ответь на сообщение командой /conspect — сделаю конспект.\n"
-            "Минимум 30 символов.",
+            "📋 Використовуй: /conspect <i>текст</i>\n\n"
+            "Або відповідж на повідомлення командою /conspect — зроблю конспект.\n"
+            "Мінімум 30 символів.",
             parse_mode="HTML",
         )
         return
 
-    wait_msg = await message.answer("📋 Делаю конспект...")
+    wait_msg = await message.answer("📋 Роблю конспект...")
     try:
         result = await make_conspect(text)
         await wait_msg.delete()
@@ -401,7 +401,7 @@ async def cmd_conspect(message: types.Message, command: CommandObject) -> None:
     except Exception as e:
         logger.exception("Conspect error: %s", e)
         await wait_msg.delete()
-        await message.answer("❌ Не удалось сделать конспект. Попробуй ещё раз.")
+        await message.answer("❌ Не вдалося зробити конспект. Спробуй ще раз.")
 
 
 # ── /search ── Text search across notes ────────────────────────────────────
@@ -411,7 +411,7 @@ async def cmd_search(message: types.Message, command: CommandObject) -> None:
     query = command.args
     if not query or len(query.strip()) < 2:
         await message.answer(
-            "🔍 Используй: /search <i>ключевое слово</i>", parse_mode="HTML"
+            "🔍 Використовуй: /search <i>ключове слово</i>", parse_mode="HTML"
         )
         return
 
@@ -420,14 +420,14 @@ async def cmd_search(message: types.Message, command: CommandObject) -> None:
         docs = await search_documents_text(session, user.id, query.strip())
 
     if not docs:
-        await message.answer(f"🔍 По запросу «{query}» ничего не найдено.")
+        await message.answer(f"🔍 За запитом «{query}» нічого не знайдено.")
         return
 
-    lines = [f"🔍 <b>Результаты по «{query}»:</b>\n"]
+    lines = [f"🔍 <b>Результати за «{query}»:</b>\n"]
     for i, doc in enumerate(docs[:10], 1):
         emoji = TYPE_EMOJI.get(doc.source_type, "📄")
         pin = "📌 " if doc.is_pinned else ""
-        title = doc.title or "Без названия"
+        title = doc.title or "Без назви"
         if len(title) > 60:
             title = title[:57] + "..."
         lines.append(f"{i}. {pin}{emoji} <b>{title}</b>")
@@ -447,13 +447,13 @@ async def cmd_pinned(message: types.Message) -> None:
         docs = await get_pinned_documents(session, user.id)
 
     if not docs:
-        await message.answer("📌 Нет закреплённых заметок. Закрепи через кнопку после сохранения!")
+        await message.answer("📌 Немає закріплених нотаток. Закріпи через кнопку після збереження!")
         return
 
-    lines = ["📌 <b>Закреплённые заметки:</b>\n"]
+    lines = ["📌 <b>Закріплені нотатки:</b>\n"]
     for i, doc in enumerate(docs, 1):
         emoji = TYPE_EMOJI.get(doc.source_type, "📄")
-        title = doc.title or "Без названия"
+        title = doc.title or "Без назви"
         lines.append(f"{i}. {emoji} <b>{title}</b>")
         if doc.summary:
             preview = doc.summary[:80].replace("\n", " ")
@@ -472,20 +472,20 @@ async def pin_callback(callback: CallbackQuery) -> None:
     doc_id, owner_id = int(parts[1]), parts[2]
 
     if str(callback.from_user.id) != owner_id:
-        await callback.answer("Это не твоя кнопка 😏", show_alert=True)
+        await callback.answer("Це не твоя кнопка 😏", show_alert=True)
         return
 
     async with async_session() as session:
         user = await get_or_create_user(session, telegram_id=callback.from_user.id)
         doc = await get_document_by_id(session, doc_id)
         if not doc or doc.user_id != user.id:
-            await callback.answer("Документ не найден.", show_alert=True)
+            await callback.answer("Документ не знайдено.", show_alert=True)
             return
 
         is_pinned = await toggle_pin(session, doc_id)
         await session.commit()
 
     if is_pinned:
-        await callback.answer("📌 Закреплено!", show_alert=False)
+        await callback.answer("📌 Закріплено!", show_alert=False)
     else:
-        await callback.answer("Откреплено", show_alert=False)
+        await callback.answer("Відкріплено", show_alert=False)

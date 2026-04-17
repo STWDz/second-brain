@@ -45,7 +45,7 @@ class PrivateOnlyMiddleware(BaseMiddleware):
                 event.chat.type, event.chat.id,
                 event.from_user.id if event.from_user else "?",
             )
-            await event.answer("🔒 Бот работает только в личных сообщениях.")
+            await event.answer("🔒 Бот працює тільки в особистих повідомленнях.")
             return None
 
         return await handler(event, data)
@@ -75,9 +75,9 @@ class WhitelistMiddleware(BaseMiddleware):
         if user_id and user_id not in allowed:
             logger.warning("Blocked unauthorized user: %s", user_id)
             if isinstance(event, Message):
-                await event.answer("🔒 Доступ ограничен. Обратись к администратору.")
+                await event.answer("🔒 Доступ обмежено. Звернись до адміністратора.")
             elif isinstance(event, CallbackQuery):
-                await event.answer("🔒 Доступ ограничен.", show_alert=True)
+                await event.answer("🔒 Доступ обмежено.", show_alert=True)
             return None
 
         return await handler(event, data)
@@ -112,7 +112,7 @@ class AntiSpamMiddleware(BaseMiddleware):
         same_count = sum(1 for _, h in self._recent[uid] if h == content_hash)
         if same_count >= self.max_repeats:
             logger.warning("Anti-spam triggered for user %s", uid)
-            await event.answer("🚫 Обнаружен спам. Подожди перед повтором.")
+            await event.answer("🚫 Виявлено спам. Зачекай перед повтором.")
             return None
 
         self._recent[uid].append((now, content_hash))
@@ -152,10 +152,10 @@ class RateLimitMiddleware(BaseMiddleware):
             logger.warning("Rate limit hit for user %s", user_id)
             if isinstance(event, Message):
                 await event.answer(
-                    "⚠️ Слишком много запросов. Подожди минутку."
+                    "⚠️ Забагато запитів. Зачекай хвилинку."
                 )
             elif isinstance(event, CallbackQuery):
-                await event.answer("⚠️ Слишком быстро! Подожди.", show_alert=True)
+                await event.answer("⚠️ Занадто швидко! Зачекай.", show_alert=True)
             return None
 
         self._user_timestamps[user_id].append(now)
@@ -191,7 +191,7 @@ class FileSizeMiddleware(BaseMiddleware):
 
             if file_size and file_size > MAX_FILE_SIZE:
                 await event.answer(
-                    f"⚠️ Файл слишком большой ({file_size // (1024*1024)} МБ). "
+                    f"⚠️ Файл занадто великий ({file_size // (1024*1024)} МБ). "
                     f"Максимум: {MAX_FILE_SIZE // (1024*1024)} МБ."
                 )
                 return None
@@ -213,7 +213,7 @@ class InputSanitizeMiddleware(BaseMiddleware):
         if isinstance(event, Message) and event.text:
             if len(event.text) > settings.max_text_length:
                 await event.answer(
-                    f"⚠️ Текст слишком длинный ({len(event.text)} символов). "
+                    f"⚠️ Текст занадто довгий ({len(event.text)} символів). "
                     f"Максимум: {settings.max_text_length}."
                 )
                 return None

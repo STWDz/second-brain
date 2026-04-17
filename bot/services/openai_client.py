@@ -188,7 +188,7 @@ async def transcribe_voice(file_bytes: bytes, filename: str = "voice.ogg") -> st
     response = await whisper_client.audio.transcriptions.create(
         model=model,
         file=audio_file,
-        language="ru",
+        prompt="Розмова українською та російською мовами. Розпізнай чітко кожне слово.",
     )
     return response.text
 

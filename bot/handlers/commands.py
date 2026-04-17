@@ -31,25 +31,26 @@ async def cmd_start(message: types.Message) -> None:
     bot_username = bot_me.username
 
     text = (
-        "🧠 <b>Second Brain</b> — твой интеллектуальный ассистент.\n\n"
-        "<b>📥 Что сохраняю:</b>\n"
-        "• Ссылки на статьи → выжимка\n"
-        "• YouTube-видео → суть из субтитров\n"
-        "• PDF-файлы → обработка документа\n"
-        "• Голосовые/кружки → расшифровка\n"
-        "• Фото с подписью → заметка\n"
-        "• 💬 Пересланные сообщения → автозаметка\n\n"
-        "<b>🔧 Команды:</b>\n"
-        "• /ask <i>вопрос</i> — RAG-поиск по базе знаний\n"
-        "• /search <i>слово</i> — текстовый поиск\n"
-        "• /chat <i>текст</i> — свободный чат с ИИ\n"
-        "• /quiz — проверь себя по заметкам\n"
-        "• /random — случайная заметка\n"
-        "• /pinned — закреплённые заметки\n"
+        "🧠 <b>Cortex</b> — твій інтелектуальний асистент.\n\n"
+        "<b>📥 Що зберігаю:</b>\n"
+        "• Посилання на статті → витяг\n"
+        "• YouTube-відео → суть із субтитрів\n"
+        "• PDF-файли → обробка документа\n"
+        "• Голосові/кружки → розшифровка\n"
+        "• Фото з підписом → нотатка\n"
+        "• 💬 Переслані повідомлення → автонотатка\n\n"
+        "<b>🔧 Команди:</b>\n"
+        "• /ask <i>питання</i> — RAG-пошук по базі знань\n"
+        "• /search <i>слово</i> — текстовий пошук\n"
+        "• /conspect <i>текст</i> — конспект з тексту\n"
+        "• /quiz — перевір себе по нотатках\n"
+        "• /random — випадкова нотатка\n"
+        "• /pinned — закріплені нотатки\n"
         "• /stats — твоя статистика\n"
-        "• /export — экспорт в Markdown\n"
-        "• /tags — все теги\n\n"
-        f"💡 <b>Inline-режим:</b> набери <code>@{bot_username} запрос</code> в любом чате!"
+        "• /export — експорт в Markdown\n"
+        "• /tags — всі теги\n\n"
+        "💬 Просто напиши — відповім як ІІ!\n\n"
+        f"💡 <b>Inline-режим:</b> набери <code>@{bot_username} запит</code> в будь-якому чаті!"
     )
 
     keyboard = None
@@ -58,7 +59,7 @@ async def cmd_start(message: types.Message) -> None:
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text="📚 Мои материалы",
+                        text="📚 Мої матеріали",
                         web_app=WebAppInfo(url=settings.webapp_url),
                     )
                 ]
@@ -71,27 +72,26 @@ async def cmd_start(message: types.Message) -> None:
 @router.message(Command("help"))
 async def cmd_help(message: types.Message) -> None:
     text = (
-        "📖 <b>Команды:</b>\n\n"
-        "<b>🔍 Поиск:</b>\n"
-        "/ask <i>вопрос</i> — AI-поиск по базе (RAG)\n"
-        "/search <i>слово</i> — текстовый поиск\n\n"
+        "📖 <b>Команди:</b>\n\n"
+        "<b>🔍 Пошук:</b>\n"
+        "/ask <i>питання</i> — AI-пошук по базі (RAG)\n"
+        "/search <i>слово</i> — текстовий пошук\n\n"
         "<b>🧠 AI:</b>\n"
-        "/chat <i>текст</i> — свободный чат с ИИ\n"
-        "/conspect <i>текст</i> — конспект из текста\n"
-        "/quiz — квиз по заметкам\n\n"
-        "<b>📚 Заметки:</b>\n"
-        "/random — случайная заметка\n"
-        "/pinned — закреплённые заметки\n"
-        "/export — экспорт в Markdown\n"
-        "/tags — все теги\n"
-        "/stats — статистика мозга\n\n"
-        "<b>📥 Отправь:</b>\n"
-        "• Ссылку / YouTube / PDF / голосовое / кружок\n"
-        "• Фото с подписью\n"
-        "• Просто напиши — отвечу как ИИ\n"
-        "• Текст >100 символов или «заметка: ...» → сохранится\n"
-        "• Перешли любое сообщение\n\n"
-        "<b>💡 Inline:</b> @botname запрос — ищи из любого чата\n"
+        "/conspect <i>текст</i> — конспект з тексту\n"
+        "/quiz — квіз по нотатках\n\n"
+        "<b>📚 Нотатки:</b>\n"
+        "/random — випадкова нотатка\n"
+        "/pinned — закріплені нотатки\n"
+        "/export — експорт в Markdown\n"
+        "/tags — всі теги\n"
+        "/stats — статистика мозку\n\n"
+        "<b>📥 Надішли:</b>\n"
+        "• Посилання / YouTube / PDF / голосове / кружок\n"
+        "• Фото з підписом\n"
+        "• Просто напиши — відповім як ІІ\n"
+        "• «нотатка: ...» → збережеться\n"
+        "• Перешли будь-яке повідомлення\n\n"
+        "<b>💡 Inline:</b> @botname запит — шукай з будь-якого чату\n"
     )
     await message.answer(text, parse_mode="HTML")
 
@@ -100,10 +100,10 @@ async def cmd_help(message: types.Message) -> None:
 async def cmd_ask(message: types.Message, command: CommandObject) -> None:
     question = command.args
     if not question:
-        await message.answer("Используй: /ask <i>твой вопрос</i>", parse_mode="HTML")
+        await message.answer("Використовуй: /ask <i>твоє питання</i>", parse_mode="HTML")
         return
 
-    wait_msg = await message.answer("🔍 Ищу в твоей базе знаний...")
+    wait_msg = await message.answer("🔍 Шукаю в твоїй базі знань...")
 
     async with async_session() as session:
         user = await get_or_create_user(session, telegram_id=message.from_user.id)
@@ -125,8 +125,8 @@ async def cmd_tags(message: types.Message) -> None:
         tags = await get_user_tags(session, user.id)
 
     if not tags:
-        await message.answer("У тебя пока нет тегов. Сохрани что-нибудь!")
+        await message.answer("У тебе поки немає тегів. Збережи щось!")
         return
 
-    text = "🏷 <b>Твои теги:</b>\n\n" + "  ".join(tags)
+    text = "🏷 <b>Твої теги:</b>\n\n" + "  ".join(tags)
     await message.answer(text, parse_mode="HTML")

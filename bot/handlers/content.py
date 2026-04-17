@@ -21,16 +21,16 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 PROGRESS_FRAMES = [
-    "⏳ Обрабатываю ░░░░░░░░░░",
-    "⏳ Обрабатываю █░░░░░░░░░",
-    "⏳ Обрабатываю ██░░░░░░░░",
-    "⏳ Обрабатываю ███░░░░░░░",
-    "⏳ Обрабатываю ████░░░░░░",
-    "⏳ Обрабатываю █████░░░░░",
-    "⏳ Обрабатываю ██████░░░░",
-    "⏳ Обрабатываю ███████░░░",
-    "⏳ Обрабатываю ████████░░",
-    "⏳ Обрабатываю █████████░",
+    "⏳ Обробляю ░░░░░░░░░░",
+    "⏳ Обробляю █░░░░░░░░░",
+    "⏳ Обробляю ██░░░░░░░░",
+    "⏳ Обробляю ███░░░░░░░",
+    "⏳ Обробляю ████░░░░░░",
+    "⏳ Обробляю █████░░░░░",
+    "⏳ Обробляю ██████░░░░",
+    "⏳ Обробляю ███████░░░",
+    "⏳ Обробляю ████████░░",
+    "⏳ Обробляю █████████░",
     "✅ Готово! ██████████████",
 ]
 
@@ -88,25 +88,25 @@ async def _process_text_content(
 
         tags_str = " ".join(tags) if tags else "—"
         result_text = (
-            f"✅ <b>Сохранено!</b>\n\n"
+            f"✅ <b>Збережено!</b>\n\n"
             f"{summary}\n\n"
             f"🏷 {tags_str}\n"
-            f"📦 {chunk_count} фрагментов в базе знаний"
+            f"📦 {chunk_count} фрагментів у базі знань"
         )
 
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text="🧒 Проще",
+                        text="🧒 Простіше",
                         callback_data=f"simplify:{doc_id}:{message.from_user.id}",
                     ),
                     InlineKeyboardButton(
-                        text="📌 Закрепить",
+                        text="📌 Закріпити",
                         callback_data=f"pin:{doc_id}:{message.from_user.id}",
                     ),
                     InlineKeyboardButton(
-                        text="🗑 Удалить",
+                        text="🗑 Видалити",
                         callback_data=f"del:{doc_id}:{message.from_user.id}",
                     ),
                 ]
@@ -121,7 +121,7 @@ async def _process_text_content(
         await progress_task
         logger.exception("Error processing content: %s", e)
         await wait_msg.delete()
-        await message.answer("❌ Произошла ошибка при обработке. Попробуй ещё раз.")
+        await message.answer("❌ Помилка при обробці. Спробуй ще раз.")
 
 
 @router.message(F.document)
@@ -129,7 +129,7 @@ async def handle_document(message: types.Message) -> None:
     """Handle PDF file uploads."""
     doc = message.document
     if not doc.file_name or not doc.file_name.lower().endswith(".pdf"):
-        await message.answer("Пока поддерживаю только PDF-файлы.")
+        await message.answer("Поки підтримую тільки PDF-файли.")
         return
 
     file = await message.bot.download(doc)
@@ -137,7 +137,7 @@ async def handle_document(message: types.Message) -> None:
     text = await extract_from_pdf(file_bytes)
 
     if not text:
-        await message.answer("❌ Не удалось извлечь текст из PDF.")
+        await message.answer("❌ Не вдалося витягнути текст з PDF.")
         return
 
     await _process_text_content(
@@ -159,16 +159,16 @@ async def handle_forwarded_text(message: types.Message) -> None:
     fwd_from = ""
     if message.forward_from:
         name = message.forward_from.first_name or message.forward_from.username or "?"
-        fwd_from = f" от {name}"
+        fwd_from = f" від {name}"
     elif message.forward_sender_name:
-        fwd_from = f" от {message.forward_sender_name}"
+        fwd_from = f" від {message.forward_sender_name}"
 
     await _process_text_content(
         message,
         text=text,
         source_url=None,
         source_type="text",
-        title=f"💬 Пересланное{fwd_from}",
+        title=f"💬 Переслане{fwd_from}",
     )
 
 
@@ -182,10 +182,11 @@ async def handle_text(message: types.Message) -> None:
         return
 
     # Check if it's a note
-    if text.lower().startswith("заметка:"):
-        note_text = text[len("заметка:"):].strip()
+    if text.lower().startswith(("нотатка:", "заметка:")):
+        prefix = "нотатка:" if text.lower().startswith("нотатка:") else "заметка:"
+        note_text = text[len(prefix):].strip()
         if not note_text:
-            await message.answer("Напиши текст заметки после «заметка:»")
+            await message.answer("Напиши текст нотатки після «нотатка:»")
             return
         await _process_text_content(
             message,
@@ -202,7 +203,7 @@ async def handle_text(message: types.Message) -> None:
     if source_type == "youtube":
         extracted = await extract_from_youtube(text)
         if not extracted:
-            await message.answer("❌ Не удалось получить субтитры с YouTube.")
+            await message.answer("❌ Не вдалося отримати субтитри з YouTube.")
             return
         await _process_text_content(
             message,
@@ -216,7 +217,7 @@ async def handle_text(message: types.Message) -> None:
     if source_type == "url":
         extracted = await extract_from_url(text)
         if not extracted:
-            await message.answer("❌ Не удалось извлечь текст из ссылки.")
+            await message.answer("❌ Не вдалося витягнути текст з посилання.")
             return
         await _process_text_content(
             message,
@@ -238,7 +239,7 @@ async def handle_text(message: types.Message) -> None:
         except Exception as e:
             logger.exception("Chat error: %s", e)
             await wait_msg.delete()
-            await message.answer("❌ Ошибка. Попробуй ещё раз.")
+            await message.answer("❌ Помилка. Спробуй ще раз.")
 
 
 @router.message(F.photo)
@@ -252,11 +253,11 @@ async def handle_photo(message: types.Message) -> None:
             text=caption.strip(),
             source_url=None,
             source_type="text",
-            title="📸 Фото с подписью",
+            title="📸 Фото з підписом",
         )
     else:
         await message.answer(
-            "📸 Фото получено! Добавь подпись к фотографии, чтобы я сохранил её как заметку.\n"
-            "Например, прикрепи фото и напиши описание к нему.",
+            "📸 Фото отримано! Додай підпис до фото, щоб я зберіг його як нотатку.\n"
+            "Наприклад, прикріпи фото і напиши опис до нього.",
             parse_mode="HTML",
         )
