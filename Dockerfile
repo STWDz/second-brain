@@ -20,5 +20,6 @@ COPY --from=builder /install /usr/local
 COPY bot/ ./bot/
 COPY alembic/ ./alembic/
 COPY alembic.ini ./alembic.ini
+COPY scripts/ ./scripts/
 
 CMD ["python", "-m", "bot"]

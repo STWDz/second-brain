@@ -6,8 +6,9 @@ primary_region = "ams"
 
 [deploy]
   # Run DB migrations before the new machine takes over traffic.
-  # Using `python -m alembic` so /app is on sys.path (env.py imports bot.config).
-  release_command = "python -m alembic upgrade head"
+  # scripts/migrate.py handles legacy (pre-alembic) databases by stamping
+  # them to 001 first, then upgrading to head.
+  release_command = "python -m scripts.migrate"
 
 [env]
   # Non-secret defaults. Secrets (BOT_TOKEN, API keys, DATABASE_URL,
