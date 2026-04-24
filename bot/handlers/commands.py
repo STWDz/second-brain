@@ -9,7 +9,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from bot.config import settings
 from bot.db.engine import async_session
 from bot.db.repositories import get_or_create_user, get_user_tags
-from bot.services.formatting import send_llm_response
+from bot.services.formatting import send_llm_response, tg_escape
 from bot.services.openai_client import ask_with_context
 from bot.services.rag import format_context_for_prompt, retrieve_hits, unique_sources
 
@@ -138,10 +138,16 @@ def _format_sources_footer(hits) -> str:
         # Truncate very long titles so the message stays compact
         if len(title) > 80:
             title = title[:77] + "..."
+        safe_title = tg_escape(title)
         if hit.source_url and hit.source_type in {"url", "youtube"}:
-            lines.append(f"{icon} <a href=\"{hit.source_url}\">{title}</a>")
+            # Only allow http(s) links in href (paranoid — source_url is user-provided)
+            url = hit.source_url
+            if url.startswith(("http://", "https://")):
+                lines.append(f'{icon} <a href="{tg_escape(url)}">{safe_title}</a>')
+            else:
+                lines.append(f"{icon} <i>{safe_title}</i>")
         else:
-            lines.append(f"{icon} <i>{title}</i>")
+            lines.append(f"{icon} <i>{safe_title}</i>")
     return "\n".join(lines)
 
 

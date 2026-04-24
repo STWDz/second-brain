@@ -1,14 +1,10 @@
 """Content extraction from various sources: URLs, YouTube, PDFs, voice."""
 
-import io
-import ipaddress
+import asyncio
 import logging
 import re
-import socket
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Optional
-from urllib.parse import urlparse
 
 import fitz  # PyMuPDF
 import trafilatura
@@ -18,6 +14,8 @@ from youtube_transcript_api._errors import (
     TranscriptsDisabled,
     VideoUnavailable,
 )
+
+from bot.services.http_fetch import fetch_url_safe
 
 logger = logging.getLogger(__name__)
 
@@ -37,43 +35,9 @@ YOUTUBE_REGEX = re.compile(
     r"(?:https?://)?(?:www\.)?(?:youtube\.com/(?:watch\?v=|shorts/|live/)|youtu\.be/)([\w-]{11})"
 )
 
-# ── SSRF protection ────────────────────────────────────────────────────────
-
-BLOCKED_SCHEMES = {"file", "ftp", "gopher", "data", "javascript"}
-MAX_URL_LENGTH = 2048
-
-
-def _is_url_safe(url: str) -> bool:
-    """Validate URL to prevent SSRF attacks."""
-    if len(url) > MAX_URL_LENGTH:
-        return False
-
-    try:
-        parsed = urlparse(url)
-    except Exception:
-        return False
-
-    # Only allow http/https
-    if parsed.scheme not in ("http", "https"):
-        return False
-
-    hostname = parsed.hostname
-    if not hostname:
-        return False
-
-    # Block localhost and private networks
-    try:
-        addr = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
-        for family, _, _, _, sockaddr in addr:
-            ip = ipaddress.ip_address(sockaddr[0])
-            if ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local:
-                logger.warning("SSRF blocked: %s resolves to private IP %s", hostname, ip)
-                return False
-    except (socket.gaierror, ValueError):
-        # Can't resolve — let trafilatura handle the error
-        pass
-
-    return True
+# PDF hard-limits (defence in depth; Telegram already caps uploads at 20 MB)
+MAX_PDF_PAGES = 300
+MAX_PDF_TEXT = 2 * 1024 * 1024  # 2 MB of extracted text
 
 
 def extract_youtube_id(url: str) -> Optional[str]:
@@ -82,50 +46,60 @@ def extract_youtube_id(url: str) -> Optional[str]:
 
 
 async def extract_from_url(url: str) -> ExtractResult:
-    """Extract clean text from a web article using trafilatura."""
-    if not _is_url_safe(url):
-        logger.warning("URL blocked by SSRF filter: %s", url[:200])
+    """Extract clean article text via SSRF-hardened fetcher + trafilatura."""
+    fetched = await fetch_url_safe(url)
+    if not fetched.ok or fetched.body is None:
         return ExtractResult(
-            error_code="unsafe",
-            error_message="Це посилання заблоковане з міркувань безпеки.",
+            error_code=fetched.error_code or "fetch_error",
+            error_message=fetched.error_message
+            or "Не вдалося завантажити сторінку.",
         )
 
+    # Decode with charset detection (fall back to utf-8 with replace)
     try:
-        downloaded = trafilatura.fetch_url(url)
-        if downloaded is None:
-            return ExtractResult(
-                error_code="unreachable",
-                error_message="Не вдалося відкрити сторінку — можливо, вона недоступна або потребує авторизації.",
-            )
+        html = fetched.body.decode("utf-8")
+    except UnicodeDecodeError:
+        html = fetched.body.decode("latin-1", errors="replace")
+
+    try:
         text = trafilatura.extract(
-            downloaded, include_links=False, include_images=False
+            html, include_links=False, include_images=False, url=fetched.final_url
         )
-        if not text or not text.strip():
-            return ExtractResult(
-                error_code="empty",
-                error_message="На сторінці не вийшло знайти читомного тексту (сайт може бути захищений JS/paywall).",
-            )
-        return ExtractResult(text=text)
     except Exception as e:
-        logger.error("Failed to extract URL %s: %s", url, e)
+        logger.error("trafilatura.extract failed for %s: %s", fetched.final_url, e)
         return ExtractResult(
-            error_code="fetch_error",
-            error_message="Не вдалося завантажити сторінку. Перевір посилання.",
+            error_code="extract_error",
+            error_message="Не вдалося розібрати вміст сторінки.",
         )
+
+    if not text or not text.strip():
+        return ExtractResult(
+            error_code="empty",
+            error_message="На сторінці не вийшло знайти читомного тексту (сайт може бути захищений JS/paywall).",
+        )
+    return ExtractResult(text=text)
 
 
 async def extract_from_youtube(url: str) -> ExtractResult:
-    """Extract transcript from a YouTube video with specific error reasons."""
+    """Extract transcript from a YouTube video with specific error reasons.
+
+    youtube_transcript_api is synchronous and does network I/O; we offload it
+    to a worker thread so the bot's event loop stays responsive for other users.
+    """
     video_id = extract_youtube_id(url)
     if not video_id:
         return ExtractResult(
             error_code="bad_url",
             error_message="Це не схоже на посилання YouTube.",
         )
-    try:
+
+    def _fetch_sync() -> str:
         api = YouTubeTranscriptApi()
         result = api.fetch(video_id, languages=["uk", "ru", "en"])
-        text = " ".join(snippet.text for snippet in result.snippets)
+        return " ".join(snippet.text for snippet in result.snippets)
+
+    try:
+        text = await asyncio.to_thread(_fetch_sync)
         if not text.strip():
             return ExtractResult(
                 error_code="empty",
@@ -155,8 +129,8 @@ async def extract_from_youtube(url: str) -> ExtractResult:
         )
 
 
-async def extract_from_pdf(file_bytes: bytes) -> ExtractResult:
-    """Extract text from a PDF file using PyMuPDF with specific error reasons."""
+def _extract_pdf_sync(file_bytes: bytes) -> ExtractResult:
+    """CPU-bound PDF extraction. Caller wraps in asyncio.to_thread."""
     try:
         doc = fitz.open(stream=file_bytes, filetype="pdf")
     except Exception as e:
@@ -168,15 +142,24 @@ async def extract_from_pdf(file_bytes: bytes) -> ExtractResult:
 
     try:
         if doc.needs_pass:
-            doc.close()
             return ExtractResult(
                 error_code="encrypted",
                 error_message="Цей PDF зашифрований/захищений паролем — не можу його прочитати.",
             )
+        total_pages = doc.page_count
+        if total_pages > MAX_PDF_PAGES:
+            logger.info("Truncating PDF from %d to %d pages", total_pages, MAX_PDF_PAGES)
         text_parts: list[str] = []
-        for page in doc:
-            text_parts.append(page.get_text())
-        doc.close()
+        running_size = 0
+        for idx, page in enumerate(doc):
+            if idx >= MAX_PDF_PAGES:
+                break
+            piece = page.get_text() or ""
+            running_size += len(piece)
+            if running_size > MAX_PDF_TEXT:
+                text_parts.append(piece[: max(0, MAX_PDF_TEXT - (running_size - len(piece)))])
+                break
+            text_parts.append(piece)
         text = "\n".join(text_parts).strip()
         if not text:
             return ExtractResult(
@@ -190,6 +173,16 @@ async def extract_from_pdf(file_bytes: bytes) -> ExtractResult:
             error_code="extract_error",
             error_message="Не вдалося витягнути текст з PDF.",
         )
+    finally:
+        try:
+            doc.close()
+        except Exception:
+            pass
+
+
+async def extract_from_pdf(file_bytes: bytes) -> ExtractResult:
+    """Extract text from a PDF with page & size caps. Offloaded to worker thread."""
+    return await asyncio.to_thread(_extract_pdf_sync, file_bytes)
 
 
 def detect_source_type(text: str) -> str:

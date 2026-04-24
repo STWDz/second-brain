@@ -69,7 +69,8 @@ async def _maybe_auto_sync_notion(doc_id: int, user_id: int) -> None:
             integration = await get_integration(session, user_id)
             if integration is None or not integration.auto_sync:
                 return
-            doc = await get_document_by_id(session, doc_id)
+            # Scope the document lookup by user_id as defence in depth
+            doc = await get_document_by_id(session, doc_id, user_id=user_id)
             if doc is None:
                 return
             token = decrypt_token(integration.token_encrypted)
@@ -151,13 +152,13 @@ async def _process_text_content(
                         callback_data=f"simplify:{doc_id}:{message.from_user.id}",
                     ),
                     InlineKeyboardButton(
-                        text="� Озвучити",
+                        text="🔊 Озвучити",
                         callback_data=f"tts:{doc_id}:{message.from_user.id}",
                     ),
                 ],
                 [
                     InlineKeyboardButton(
-                        text="�📌 Закріпити",
+                        text="📌 Закріпити",
                         callback_data=f"pin:{doc_id}:{message.from_user.id}",
                     ),
                     InlineKeyboardButton(

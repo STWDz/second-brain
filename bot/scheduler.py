@@ -1,7 +1,16 @@
-"""Scheduled tasks: Daily & Weekly Digests for spaced repetition."""
+"""Scheduled tasks: Daily & Weekly Digests for spaced repetition.
 
+Deployment note: when the app runs on multiple Fly.io machines, all of them
+boot APScheduler. To avoid every user receiving N copies of the same digest,
+every job acquires a Postgres advisory lock (``pg_try_advisory_lock``) before
+doing work. Only the machine that wins the lock for a given (job, date) will
+actually send messages; the other machines no-op quietly.
+"""
+
+import hashlib
 import json
 import logging
+from datetime import datetime, timezone
 
 from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -10,8 +19,35 @@ from sqlalchemy import func as sa_func, select, text
 from bot.config import settings
 from bot.db.engine import async_session
 from bot.db.models import Document, User
+from bot.services.formatting import tg_escape
 
 logger = logging.getLogger(__name__)
+
+
+def _lock_key(job_name: str) -> int:
+    """Stable 63-bit integer lock key per (job, UTC date)."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    raw = f"cortex:{job_name}:{today}".encode("utf-8")
+    return int.from_bytes(hashlib.sha256(raw).digest()[:8], "big") & ((1 << 63) - 1)
+
+
+async def _try_acquire_daily_lock(session, job_name: str) -> bool:
+    """Try to take a Postgres advisory lock for today's run of ``job_name``.
+
+    Returns True if we own it (and MUST release via _release_lock). The lock
+    is released automatically when the session/connection ends, so even if
+    this machine crashes mid-run the next cron tick can retry.
+    """
+    key = _lock_key(job_name)
+    result = await session.execute(text("SELECT pg_try_advisory_lock(:k)"), {"k": key})
+    got = bool(result.scalar())
+    if not got:
+        logger.info("Scheduler lock busy for %s — another machine is handling it", job_name)
+    return got
+
+
+async def _release_lock(session, job_name: str) -> None:
+    await session.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": _lock_key(job_name)})
 
 TYPE_EMOJI = {
     "url": "🔗", "youtube": "📺", "pdf": "📄", "voice": "🎙", "text": "📝",
@@ -21,8 +57,14 @@ TYPE_EMOJI = {
 async def send_daily_digest(bot: Bot) -> None:
     """Send one random old card to each user (spaced repetition)."""
     async with async_session() as session:
-        users_result = await session.execute(select(User))
-        users = users_result.scalars().all()
+        if not await _try_acquire_daily_lock(session, "daily_digest"):
+            return
+        try:
+            users_result = await session.execute(select(User))
+            users = users_result.scalars().all()
+        except Exception:
+            await _release_lock(session, "daily_digest")
+            raise
 
         for user in users:
             try:
@@ -49,14 +91,14 @@ async def send_daily_digest(bot: Bot) -> None:
                 emoji = TYPE_EMOJI.get(doc.source_type, "📄")
                 msg = (
                     f"📬 <b>Daily Digest — вспомни!</b>\n\n"
-                    f"{emoji} <b>{doc.title or 'Без названия'}</b>\n"
+                    f"{emoji} <b>{tg_escape(doc.title or 'Без названия')}</b>\n"
                 )
                 if doc.source_url:
-                    msg += f"🔗 {doc.source_url}\n"
+                    msg += f"🔗 {tg_escape(doc.source_url)}\n"
                 if doc.summary:
-                    msg += f"\n{doc.summary}\n"
+                    msg += f"\n{tg_escape(doc.summary)}\n"
                 if tags:
-                    msg += f"\n🏷 {tags}"
+                    msg += f"\n🏷 {tg_escape(tags)}"
 
                 await bot.send_message(
                     chat_id=user.telegram_id, text=msg, parse_mode="HTML"
@@ -65,11 +107,15 @@ async def send_daily_digest(bot: Bot) -> None:
                 logger.error(
                     "Failed to send digest to user %s: %s", user.telegram_id, e
                 )
+        # Session close naturally drops the advisory lock; release explicitly too.
+        await _release_lock(session, "daily_digest")
 
 
 async def send_weekly_digest(bot: Bot) -> None:
     """Weekly summary: what you saved this week, top tags, total growth."""
     async with async_session() as session:
+        if not await _try_acquire_daily_lock(session, "weekly_digest"):
+            return
         users_result = await session.execute(select(User))
         users = users_result.scalars().all()
 
@@ -124,6 +170,7 @@ async def send_weekly_digest(bot: Bot) -> None:
                     "Failed to send weekly digest to user %s: %s",
                     user.telegram_id, e,
                 )
+        await _release_lock(session, "weekly_digest")
 
 
 def setup_scheduler(bot: Bot) -> AsyncIOScheduler:

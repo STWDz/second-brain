@@ -47,6 +47,13 @@ class Settings(BaseSettings):
     # If set, enables the /notion_* commands. Used only as a feature flag.
     notion_enabled: bool = True
 
+    # ── Cryptography ──
+    # Dedicated secret used to derive the Fernet key for encrypting stored
+    # credentials (Notion tokens). If empty, we fall back to BOT_TOKEN so
+    # upgrades from older deployments don't lose data — but ROTATING BOT_TOKEN
+    # would then invalidate every stored cipher. Set this once, keep it secret.
+    secret_key: str = ""
+
     @property
     def allowed_user_ids(self) -> set[int]:
         if not self.allowed_users.strip():

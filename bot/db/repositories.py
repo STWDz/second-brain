@@ -1,7 +1,7 @@
 import json
 from typing import Optional, Sequence
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.db.models import Chunk, Document, User
@@ -126,23 +126,16 @@ async def get_random_old_document(
     user_id: int,
     days_ago: int = 30,
 ) -> Optional[Document]:
-    stmt = text(
-        """
-        SELECT * FROM documents
-        WHERE user_id = :user_id
-          AND created_at <= NOW() - INTERVAL ':days days'
-        ORDER BY RANDOM()
-        LIMIT 1
-        """
-    )
+    # Parameterize interval via make_interval() to avoid string interpolation in SQL
+    days = max(1, int(days_ago))
     result = await session.execute(
         select(Document)
         .where(Document.user_id == user_id)
         .where(
             Document.created_at
-            <= text("NOW() - INTERVAL '30 days'")
+            <= func.now() - func.make_interval(0, 0, 0, days)
         )
-        .order_by(text("RANDOM()"))
+        .order_by(func.random())
         .limit(1)
     )
     return result.scalar_one_or_none()
@@ -156,29 +149,41 @@ async def get_random_document(
     result = await session.execute(
         select(Document)
         .where(Document.user_id == user_id)
-        .order_by(text("RANDOM()"))
+        .order_by(func.random())
         .limit(1)
     )
     return result.scalar_one_or_none()
 
 
-async def delete_document(session: AsyncSession, document_id: int) -> bool:
-    """Delete a document and its chunks."""
+async def delete_document(
+    session: AsyncSession, document_id: int, user_id: Optional[int] = None
+) -> bool:
+    """Delete a document (and its chunks).
+
+    If `user_id` is provided we scope the delete to that owner so a caller
+    can't accidentally remove someone else's data even if it passes the wrong
+    document_id. Returns True if a row was deleted.
+    """
     from sqlalchemy import delete as sa_delete
 
-    result = await session.execute(
-        sa_delete(Document).where(Document.id == document_id)
-    )
+    stmt = sa_delete(Document).where(Document.id == document_id)
+    if user_id is not None:
+        stmt = stmt.where(Document.user_id == user_id)
+    result = await session.execute(stmt)
     await session.flush()
     return result.rowcount > 0
 
 
 async def get_document_by_id(
-    session: AsyncSession, document_id: int
+    session: AsyncSession,
+    document_id: int,
+    user_id: Optional[int] = None,
 ) -> Optional[Document]:
-    result = await session.execute(
-        select(Document).where(Document.id == document_id)
-    )
+    """Return the document only if it belongs to `user_id` (when provided)."""
+    stmt = select(Document).where(Document.id == document_id)
+    if user_id is not None:
+        stmt = stmt.where(Document.user_id == user_id)
+    result = await session.execute(stmt)
     return result.scalar_one_or_none()
 
 
@@ -239,26 +244,35 @@ async def search_documents_text(
     query: str,
     limit: int = 10,
 ) -> Sequence[Document]:
-    """Full-text search across titles, summaries, and tags."""
-    pattern = f"%{query}%"
+    """Full-text search across titles, summaries, and tags.
+
+    SQL LIKE wildcards (%, _, \\) from the user are escaped so they can't be
+    used to match everything.
+    """
+    safe = (
+        query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    )
+    pattern = f"%{safe}%"
     stmt = (
         select(Document)
         .where(Document.user_id == user_id)
         .where(
-            (Document.title.ilike(pattern))
-            | (Document.summary.ilike(pattern))
-            | (Document.tags.ilike(pattern))
+            (Document.title.ilike(pattern, escape="\\"))
+            | (Document.summary.ilike(pattern, escape="\\"))
+            | (Document.tags.ilike(pattern, escape="\\"))
         )
         .order_by(Document.created_at.desc())
-        .limit(limit)
+        .limit(max(1, min(int(limit), 100)))
     )
     result = await session.execute(stmt)
     return result.scalars().all()
 
 
-async def toggle_pin(session: AsyncSession, document_id: int) -> bool:
-    """Toggle pin status. Returns new is_pinned value."""
-    doc = await get_document_by_id(session, document_id)
+async def toggle_pin(
+    session: AsyncSession, document_id: int, user_id: Optional[int] = None
+) -> bool:
+    """Toggle pin status (scoped to `user_id` if given). Returns new is_pinned."""
+    doc = await get_document_by_id(session, document_id, user_id=user_id)
     if not doc:
         return False
     doc.is_pinned = not doc.is_pinned
@@ -287,10 +301,15 @@ async def get_recent_documents(
     limit: int = 20,
 ) -> Sequence[Document]:
     """Get documents from the last N days."""
+    days = max(1, int(days))
+    limit = max(1, min(int(limit), 200))
     stmt = (
         select(Document)
         .where(Document.user_id == user_id)
-        .where(Document.created_at >= text(f"NOW() - INTERVAL '{days} days'"))
+        .where(
+            Document.created_at
+            >= func.now() - func.make_interval(0, 0, 0, days)
+        )
         .order_by(Document.created_at.desc())
         .limit(limit)
     )
@@ -332,7 +351,8 @@ async def get_global_stats(session: AsyncSession) -> dict:
     active_7d = (
         await session.execute(
             select(func.count(func.distinct(Document.user_id))).where(
-                Document.created_at >= text("NOW() - INTERVAL '7 days'")
+                Document.created_at
+                >= func.now() - func.make_interval(0, 0, 0, 7)
             )
         )
     ).scalar_one()

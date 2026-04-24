@@ -27,7 +27,7 @@ from bot.db.repositories import (
     search_documents_text,
     toggle_pin,
 )
-from bot.services.formatting import send_llm_response
+from bot.services.formatting import send_llm_response, tg_escape
 from bot.services.openai_client import free_chat, generate_quiz, make_conspect, simplify_text
 
 logger = logging.getLogger(__name__)
@@ -70,9 +70,9 @@ async def cmd_quiz(message: types.Message) -> None:
     correct = quiz["correct"]
     explanation = quiz.get("explanation", "")
 
-    text = f"🧩 <b>Квіз по твоїх нотатках</b>\n\n❓ {quiz['question']}\n\n"
+    text = f"🧩 <b>Квіз по твоїх нотатках</b>\n\n❓ {tg_escape(quiz['question'])}\n\n"
     for key in ["A", "B", "C", "D"]:
-        text += f"  <b>{key}.</b> {options.get(key, '—')}\n"
+        text += f"  <b>{key}.</b> {tg_escape(options.get(key, '—'))}\n"
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -193,13 +193,13 @@ async def cmd_random(message: types.Message) -> None:
             pass
 
     emoji = TYPE_EMOJI.get(doc.source_type, "📄")
-    text = f"🎲 <b>Випадкова нотатка</b>\n\n{emoji} <b>{doc.title or 'Без назви'}</b>\n"
+    text = f"🎲 <b>Випадкова нотатка</b>\n\n{emoji} <b>{tg_escape(doc.title or 'Без назви')}</b>\n"
     if doc.source_url:
-        text += f"🔗 {doc.source_url}\n"
+        text += f"🔗 {tg_escape(doc.source_url)}\n"
     if doc.summary:
-        text += f"\n{doc.summary}\n"
+        text += f"\n{tg_escape(doc.summary)}\n"
     if tags:
-        text += f"\n🏷 {tags}"
+        text += f"\n🏷 {tg_escape(tags)}"
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -238,13 +238,13 @@ async def random_callback(callback: CallbackQuery) -> None:
             pass
 
     emoji = TYPE_EMOJI.get(doc.source_type, "📄")
-    text = f"🎲 <b>Випадкова нотатка</b>\n\n{emoji} <b>{doc.title or 'Без назви'}</b>\n"
+    text = f"🎲 <b>Випадкова нотатка</b>\n\n{emoji} <b>{tg_escape(doc.title or 'Без назви')}</b>\n"
     if doc.source_url:
-        text += f"🔗 {doc.source_url}\n"
+        text += f"🔗 {tg_escape(doc.source_url)}\n"
     if doc.summary:
-        text += f"\n{doc.summary}\n"
+        text += f"\n{tg_escape(doc.summary)}\n"
     if tags:
-        text += f"\n🏷 {tags}"
+        text += f"\n🏷 {tg_escape(tags)}"
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -274,15 +274,15 @@ async def delete_callback(callback: CallbackQuery) -> None:
         )
         return
 
-    # Verify document actually belongs to the user (defence in depth)
+    # Defence in depth: repository layer also scopes by user_id.
     async with async_session() as session:
         user = await get_or_create_user(session, telegram_id=callback.from_user.id)
-        doc = await get_document_by_id(session, doc_id)
-        if not doc or doc.user_id != user.id:
+        doc = await get_document_by_id(session, doc_id, user_id=user.id)
+        if not doc:
             await callback.answer("Документ не знайдено або він не твій.", show_alert=True)
             return
 
-        deleted = await delete_document(session, doc_id)
+        deleted = await delete_document(session, doc_id, user_id=user.id)
         await session.commit()
 
     if deleted:
@@ -310,12 +310,12 @@ async def simplify_callback(callback: CallbackQuery) -> None:
 
     await callback.answer("🔄 Спрощую...")
 
-    # Verify ownership
+    # Verify ownership at the repository layer
     async with async_session() as session:
         user = await get_or_create_user(session, telegram_id=callback.from_user.id)
-        doc = await get_document_by_id(session, doc_id)
+        doc = await get_document_by_id(session, doc_id, user_id=user.id)
 
-    if not doc or doc.user_id != user.id or not doc.summary:
+    if not doc or not doc.summary:
         await callback.message.answer("Нема що спрощувати.")
         return
 
@@ -517,17 +517,17 @@ async def cmd_search(message: types.Message, command: CommandObject) -> None:
         await message.answer(f"🔍 За запитом «{query}» нічого не знайдено.")
         return
 
-    lines = [f"🔍 <b>Результати за «{query}»:</b>\n"]
+    lines = [f"🔍 <b>Результати за «{tg_escape(query)}»:</b>\n"]
     for i, doc in enumerate(docs[:10], 1):
         emoji = TYPE_EMOJI.get(doc.source_type, "📄")
         pin = "📌 " if doc.is_pinned else ""
         title = doc.title or "Без назви"
         if len(title) > 60:
             title = title[:57] + "..."
-        lines.append(f"{i}. {pin}{emoji} <b>{title}</b>")
+        lines.append(f"{i}. {pin}{emoji} <b>{tg_escape(title)}</b>")
         if doc.summary:
             preview = doc.summary[:100].replace("\n", " ")
-            lines.append(f"   <i>{preview}...</i>")
+            lines.append(f"   <i>{tg_escape(preview)}...</i>")
 
     await message.answer("\n".join(lines), parse_mode="HTML")
 
@@ -548,10 +548,10 @@ async def cmd_pinned(message: types.Message) -> None:
     for i, doc in enumerate(docs, 1):
         emoji = TYPE_EMOJI.get(doc.source_type, "📄")
         title = doc.title or "Без назви"
-        lines.append(f"{i}. {emoji} <b>{title}</b>")
+        lines.append(f"{i}. {emoji} <b>{tg_escape(title)}</b>")
         if doc.summary:
             preview = doc.summary[:80].replace("\n", " ")
-            lines.append(f"   <i>{preview}...</i>")
+            lines.append(f"   <i>{tg_escape(preview)}...</i>")
 
     await message.answer("\n".join(lines), parse_mode="HTML")
 
@@ -574,12 +574,12 @@ async def pin_callback(callback: CallbackQuery) -> None:
 
     async with async_session() as session:
         user = await get_or_create_user(session, telegram_id=callback.from_user.id)
-        doc = await get_document_by_id(session, doc_id)
-        if not doc or doc.user_id != user.id:
+        doc = await get_document_by_id(session, doc_id, user_id=user.id)
+        if not doc:
             await callback.answer("Документ не знайдено.", show_alert=True)
             return
 
-        is_pinned = await toggle_pin(session, doc_id)
+        is_pinned = await toggle_pin(session, doc_id, user_id=user.id)
         await session.commit()
 
     if is_pinned:

@@ -7,6 +7,7 @@ reject with 400 Bad Request.
 
 from __future__ import annotations
 
+import html as html_module
 import logging
 import re
 from typing import Optional
@@ -15,6 +16,19 @@ from aiogram import types
 from aiogram.exceptions import TelegramBadRequest
 
 logger = logging.getLogger(__name__)
+
+
+def tg_escape(text: Optional[str]) -> str:
+    """HTML-escape user- or DB-controlled text for Telegram parse_mode='HTML'.
+
+    Telegram only treats `<`, `>`, `&` specially inside text, and additionally
+    `"` inside attribute values. We escape all four so strings like
+    ``<script>``, ``a & b``, or ``"quote"`` never break message parsing.
+    Use this on every interpolated field that came from the user, LLM, or DB.
+    """
+    if not text:
+        return ""
+    return html_module.escape(str(text), quote=True)
 
 # Tags Telegram actually understands inside messages (HTML parse mode)
 _ALLOWED_TAGS = {"b", "strong", "i", "em", "u", "s", "code", "pre", "a", "blockquote"}

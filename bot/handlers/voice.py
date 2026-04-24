@@ -6,6 +6,7 @@ from aiogram import F, Router, types
 
 from bot.db.engine import async_session
 from bot.db.repositories import create_document, get_or_create_user
+from bot.services.formatting import tg_escape
 from bot.services.openai_client import transcribe_voice
 from bot.services.rag import embed_and_store_chunks
 
@@ -48,7 +49,7 @@ async def _process_audio(
 
         await wait_msg.delete()
         await message.answer(
-            f"📝 <b>Розшифровка:</b>\n\n{transcript}",
+            f"📝 <b>Розшифровка:</b>\n\n{tg_escape(transcript)}",
             parse_mode="HTML",
         )
 

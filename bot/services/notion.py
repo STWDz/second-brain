@@ -44,22 +44,45 @@ _UUID_RE = re.compile(r"[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA
 # ── Token crypto ───────────────────────────────────────────────────────────
 
 
-def _fernet() -> Fernet:
-    """Derive a stable 32-byte key from BOT_TOKEN via SHA-256."""
-    digest = hashlib.sha256(settings.bot_token.encode("utf-8")).digest()
+def _derive_fernet(secret: str) -> Fernet:
+    digest = hashlib.sha256(secret.encode("utf-8")).digest()
     return Fernet(base64.urlsafe_b64encode(digest))
 
 
+def _fernet_primary() -> Fernet:
+    """Preferred key: dedicated SECRET_KEY when set, else BOT_TOKEN (legacy)."""
+    return _derive_fernet(settings.secret_key or settings.bot_token)
+
+
+def _fernet_fallbacks() -> list[Fernet]:
+    """Additional keys tried on decrypt only — supports seamless key migration.
+
+    If SECRET_KEY is set, we also try BOT_TOKEN so tokens encrypted before the
+    migration still open. When the caller successfully decrypts via a fallback,
+    they should re-encrypt with the primary key on next write (handled by
+    upsert_integration because it always writes fresh).
+    """
+    fallbacks: list[Fernet] = []
+    if settings.secret_key:
+        fallbacks.append(_derive_fernet(settings.bot_token))
+    return fallbacks
+
+
 def encrypt_token(token: str) -> str:
-    return _fernet().encrypt(token.encode("utf-8")).decode("ascii")
+    return _fernet_primary().encrypt(token.encode("utf-8")).decode("ascii")
 
 
 def decrypt_token(ciphertext: str) -> Optional[str]:
-    try:
-        return _fernet().decrypt(ciphertext.encode("ascii")).decode("utf-8")
-    except InvalidToken:
-        logger.warning("Failed to decrypt Notion token (bot token changed?)")
-        return None
+    raw = ciphertext.encode("ascii")
+    for key in (_fernet_primary(), *_fernet_fallbacks()):
+        try:
+            return key.decrypt(raw).decode("utf-8")
+        except InvalidToken:
+            continue
+    logger.warning(
+        "Failed to decrypt stored token — neither primary nor legacy key matched"
+    )
+    return None
 
 
 # ── Repository helpers ────────────────────────────────────────────────────

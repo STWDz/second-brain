@@ -92,10 +92,13 @@ async def handle_documents(request: web.Request) -> web.Response:
 
     try:
         tag_filter = request.query.get("tag")
-        limit = min(int(request.query.get("limit", "50")), 100)
-        offset = max(int(request.query.get("offset", "0")), 0)
+        limit = max(1, min(int(request.query.get("limit", "50")), 100))
+        offset = max(0, min(int(request.query.get("offset", "0")), 100_000))
     except (ValueError, TypeError):
         return web.json_response({"error": "Invalid params"}, status=400)
+
+    if tag_filter is not None and len(tag_filter) > 64:
+        return web.json_response({"error": "Invalid tag"}, status=400)
 
     async with async_session() as session:
         user = await get_or_create_user(session, telegram_id=telegram_id)
@@ -142,14 +145,50 @@ async def handle_tags(request: web.Request) -> web.Response:
 # ── Rate-limiting middleware ───────────────────────────────────────────────
 
 _rate_limits: dict[str, list[float]] = {}
+_rl_last_gc: float = 0.0
 MAX_REQUESTS_PER_MINUTE = 30
+_RL_MAX_KEYS = 5000
+
+
+def _client_identity(request: web.Request) -> str:
+    """Best-effort client ID: real IP + validated user ID.
+
+    Behind Fly.io `request.remote` is the proxy; the real client is in
+    `Fly-Client-IP` (or the last non-private entry of X-Forwarded-For).
+    We prefer the Telegram user id whenever it's validated so one user
+    can't bypass the bucket by rotating IPs.
+    """
+    # Trusted headers Fly.io sets; safe because the edge strips them from
+    # untrusted inbound requests.
+    ip = request.headers.get("Fly-Client-IP")
+    if not ip:
+        xff = request.headers.get("X-Forwarded-For", "")
+        if xff:
+            ip = xff.split(",")[0].strip()
+    ip = ip or request.remote or "unknown"
+
+    user = _extract_telegram_id(request)
+    return f"u{user}" if user else f"ip:{ip}"
 
 
 def _is_rate_limited(client_id: str) -> bool:
     """Simple in-memory rate limiter."""
+    global _rl_last_gc
     now = time.time()
+
+    # Periodic GC so the dict can't grow unbounded.
+    if now - _rl_last_gc > 60:
+        _rl_last_gc = now
+        for k in list(_rate_limits):
+            if not _rate_limits[k] or now - _rate_limits[k][-1] > 120:
+                _rate_limits.pop(k, None)
+        if len(_rate_limits) > _RL_MAX_KEYS:
+            # Evict oldest half as a circuit breaker.
+            victims = sorted(_rate_limits.items(), key=lambda kv: kv[1][-1] if kv[1] else 0)
+            for k, _ in victims[: len(_rate_limits) // 2]:
+                _rate_limits.pop(k, None)
+
     window = _rate_limits.setdefault(client_id, [])
-    # Remove old entries
     _rate_limits[client_id] = [t for t in window if now - t < 60]
     if len(_rate_limits[client_id]) >= MAX_REQUESTS_PER_MINUTE:
         return True
@@ -171,34 +210,42 @@ def create_webapp_app() -> web.Application:
 
     @web.middleware
     async def security_middleware(request, handler):
-        # Rate limiting by IP
-        client_ip = request.remote or "unknown"
-        if _is_rate_limited(client_ip):
+        # Rate limiting by (user or real-client IP, not proxy)
+        if _is_rate_limited(_client_identity(request)):
             return web.json_response(
-                {"error": "Too many requests"}, status=429
+                {"error": "Too many requests"}, status=429,
+                headers={"Retry-After": "60"},
             )
 
-        # Handle CORS preflight
+        # CORS preflight short-circuit
         if request.method == "OPTIONS":
-            response = web.Response()
+            response = web.Response(status=204)
         else:
             response = await handler(request)
 
-        # CORS — restrict to webapp_url if configured
-        allowed_origin = settings.webapp_url or "*"
-        response.headers["Access-Control-Allow-Origin"] = allowed_origin
-        response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        # Lock CORS to the exact webapp origin when known.
+        # If the origin doesn't match, we simply don't set the header, which
+        # causes browsers to block cross-origin reads — that's the safe default.
+        req_origin = request.headers.get("Origin", "")
+        allowed = settings.webapp_url.rstrip("/") if settings.webapp_url else ""
+        if allowed and req_origin.rstrip("/") == allowed:
+            response.headers["Access-Control-Allow-Origin"] = allowed
+            response.headers["Vary"] = "Origin"
+            response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+            response.headers["Access-Control-Max-Age"] = "600"
 
         # Security headers
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
         response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+        response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
 
         return response
 
+    # Middlewares must be registered BEFORE the app is frozen, but route order
+    # doesn't matter — aiohttp composes them at the first request.
     app.middlewares.append(security_middleware)
     return app

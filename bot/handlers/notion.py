@@ -16,6 +16,7 @@ from aiogram.filters import Command, CommandObject
 from bot.config import settings
 from bot.db.engine import async_session
 from bot.db.repositories import get_or_create_user, get_user_documents
+from bot.services.formatting import tg_escape
 from bot.services.notion import (
     NotionError,
     decrypt_token,
@@ -79,7 +80,7 @@ async def cmd_notion_connect(message: types.Message, command: CommandObject) -> 
         db_title = await verify_credentials(token, database_id)
     except NotionError as e:
         await status.edit_text(
-            f"❌ Notion відхилив credentials: <i>{e.message}</i>\n\n"
+            f"❌ Notion відхилив credentials: <i>{tg_escape(e.message)}</i>\n\n"
             "Перевір, що інтеграція має доступ до бази (Share → Connections → Add).",
             parse_mode="HTML",
         )
@@ -96,8 +97,8 @@ async def cmd_notion_connect(message: types.Message, command: CommandObject) -> 
 
     await status.edit_text(
         f"✅ <b>Notion підключено!</b>\n\n"
-        f"📚 База: <b>{db_title}</b>\n"
-        f"🆔 <code>{database_id}</code>\n\n"
+        f"📚 База: <b>{tg_escape(db_title)}</b>\n"
+        f"🆔 <code>{tg_escape(database_id)}</code>\n\n"
         "Використай /notion_sync щоб вивантажити існуючі нотатки.",
         parse_mode="HTML",
     )
@@ -119,7 +120,7 @@ async def cmd_notion_status(message: types.Message) -> None:
 
     await message.answer(
         "✅ <b>Notion підключено</b>\n\n"
-        f"🆔 База: <code>{integration.database_id}</code>\n"
+        f"🆔 База: <code>{tg_escape(integration.database_id)}</code>\n"
         f"🕒 З'єднано: {integration.created_at.strftime('%d.%m.%Y') if integration.created_at else '—'}\n"
         f"🔁 Авто-синк нових нотаток: {'✅' if integration.auto_sync else '❌'}",
         parse_mode="HTML",

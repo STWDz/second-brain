@@ -81,9 +81,9 @@ async def cb_tts_document(callback: types.CallbackQuery) -> None:
 
     async with async_session() as session:
         user = await get_or_create_user(session, telegram_id=callback.from_user.id)
-        doc = await get_document_by_id(session, doc_id)
+        doc = await get_document_by_id(session, doc_id, user_id=user.id)
 
-    if not doc or doc.user_id != user.id or not doc.summary:
+    if not doc or not doc.summary:
         await callback.answer("Нема що озвучувати", show_alert=True)
         return
 
