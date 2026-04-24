@@ -4,6 +4,11 @@ primary_region = "ams"
 [build]
   dockerfile = "Dockerfile"
 
+[deploy]
+  # Run DB migrations before the new machine takes over traffic.
+  # This uses a short-lived VM with the full image + secrets.
+  release_command = "alembic upgrade head"
+
 [env]
   # Non-secret defaults. Secrets (BOT_TOKEN, API keys, DATABASE_URL,
   # WEBHOOK_SECRET, REDIS_URL) go via `flyctl secrets set`.

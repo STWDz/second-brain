@@ -18,5 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends libpq5 && \
 
 COPY --from=builder /install /usr/local
 COPY bot/ ./bot/
+COPY alembic/ ./alembic/
+COPY alembic.ini ./alembic.ini
 
 CMD ["python", "-m", "bot"]

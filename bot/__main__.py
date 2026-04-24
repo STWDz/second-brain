@@ -86,14 +86,18 @@ def _build_public_app() -> web.Application:
 
 
 async def _run_polling(bot: Bot, dp: Dispatcher) -> None:
-    """Polling mode — good for local dev; also runs the health/API server."""
+    """Polling mode — good for local dev; also runs the health/API server.
+
+    Binds to 0.0.0.0 so Fly.io's HTTP health check on /health can reach us.
+    The WebApp API itself is already protected by Telegram initData HMAC
+    validation, so exposing it is safe.
+    """
     app = _build_public_app()
     runner = web.AppRunner(app)
     await runner.setup()
-    # Keep 127.0.0.1 in polling mode: this is dev, we don't want to expose webapp
-    site = web.TCPSite(runner, "127.0.0.1", settings.web_port)
+    site = web.TCPSite(runner, "0.0.0.0", settings.web_port)
     await site.start()
-    logger.info("HTTP (polling mode) on http://127.0.0.1:%d", settings.web_port)
+    logger.info("HTTP (polling mode) on 0.0.0.0:%d", settings.web_port)
 
     # Clear any stale webhook before polling so we don't get 409 Conflict
     await bot.delete_webhook(drop_pending_updates=False)
