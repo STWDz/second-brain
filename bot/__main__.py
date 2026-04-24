@@ -80,8 +80,8 @@ def _build_public_app() -> web.Application:
     """Public aiohttp app: /health + Mini App API under /api."""
     app = web.Application()
     app.router.add_get("/health", _health)
-    # Mount the WebApp API as a sub-app (all routes live under /api/*)
-    app.add_subapp("/", create_webapp_app())
+    # Mount the WebApp API as a sub-app at /api
+    app.add_subapp("/api", create_webapp_app())
     return app
 
 

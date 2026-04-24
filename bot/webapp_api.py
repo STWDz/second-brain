@@ -160,9 +160,14 @@ def _is_rate_limited(client_id: str) -> bool:
 # ── App factory ────────────────────────────────────────────────────────────
 
 def create_webapp_app() -> web.Application:
+    """Return an aiohttp sub-app to be mounted at /api in the main app.
+
+    Routes are defined without the /api prefix here; the caller mounts this
+    whole app under /api via `main_app.add_subapp("/api", create_webapp_app())`.
+    """
     app = web.Application()
-    app.router.add_get("/api/documents", handle_documents)
-    app.router.add_get("/api/tags", handle_tags)
+    app.router.add_get("/documents", handle_documents)
+    app.router.add_get("/tags", handle_tags)
 
     @web.middleware
     async def security_middleware(request, handler):
