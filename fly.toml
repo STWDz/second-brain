@@ -6,8 +6,8 @@ primary_region = "ams"
 
 [deploy]
   # Run DB migrations before the new machine takes over traffic.
-  # This uses a short-lived VM with the full image + secrets.
-  release_command = "alembic upgrade head"
+  # Using `python -m alembic` so /app is on sys.path (env.py imports bot.config).
+  release_command = "python -m alembic upgrade head"
 
 [env]
   # Non-secret defaults. Secrets (BOT_TOKEN, API keys, DATABASE_URL,
