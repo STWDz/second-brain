@@ -6,6 +6,7 @@ import logging
 from aiogram import F, Router, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+from bot.config import settings
 from bot.db.engine import async_session
 from bot.db.repositories import create_document, get_or_create_user
 from bot.services.content import (
@@ -14,6 +15,7 @@ from bot.services.content import (
     extract_from_url,
     extract_from_youtube,
 )
+from bot.services.formatting import send_llm_response
 from bot.services.openai_client import free_chat, generate_tags, summarize_text
 from bot.services.rag import embed_and_store_chunks
 
@@ -58,6 +60,16 @@ async def _process_text_content(
     title: str | None = None,
 ) -> None:
     """Common pipeline: summarize → tag → embed → store with animated progress."""
+    # Enforce per-source content limit to protect API quotas
+    truncated = False
+    if len(text) > settings.max_content_chars:
+        text = text[: settings.max_content_chars]
+        truncated = True
+        await message.answer(
+            f"ℹ️ Матеріал довший за {settings.max_content_chars:,} символів — "
+            f"обробляю перші {settings.max_content_chars:,} символів, щоб вкластися в ліміти API.".replace(",", " ")
+        )
+
     wait_msg = await message.answer(PROGRESS_FRAMES[0])
     stop_event = asyncio.Event()
     progress_task = asyncio.create_task(_animate_progress(wait_msg, stop_event))
@@ -114,7 +126,7 @@ async def _process_text_content(
         )
 
         await wait_msg.delete()
-        await message.answer(result_text, parse_mode="HTML", reply_markup=keyboard)
+        await send_llm_response(message, result_text, reply_markup=keyboard)
 
     except Exception as e:
         stop_event.set()
@@ -129,20 +141,30 @@ async def handle_document(message: types.Message) -> None:
     """Handle PDF file uploads."""
     doc = message.document
     if not doc.file_name or not doc.file_name.lower().endswith(".pdf"):
-        await message.answer("Поки підтримую тільки PDF-файли.")
+        await message.answer("📎 Поки підтримую тільки PDF-файли.")
+        return
+
+    # Telegram Bot API itself caps downloads at 20 MB — warn early and clearly
+    max_pdf_bytes = 20 * 1024 * 1024
+    if doc.file_size and doc.file_size > max_pdf_bytes:
+        await message.answer(
+            f"📦 PDF завеликий ({doc.file_size / 1024 / 1024:.1f} МБ). "
+            "Telegram-боти не можуть завантажувати файли більші за 20 МБ. "
+            "Скорочи PDF або надішли його посторінково."
+        )
         return
 
     file = await message.bot.download(doc)
     file_bytes = file.read()
-    text = await extract_from_pdf(file_bytes)
+    result = await extract_from_pdf(file_bytes)
 
-    if not text:
-        await message.answer("❌ Не вдалося витягнути текст з PDF.")
+    if not result.ok:
+        await message.answer(f"❌ {result.error_message}")
         return
 
     await _process_text_content(
         message,
-        text=text,
+        text=result.text,
         source_url=None,
         source_type="pdf",
         title=doc.file_name,
@@ -202,17 +224,14 @@ async def handle_text(message: types.Message) -> None:
 
     if source_type == "youtube":
         wait_yt = await message.answer("📺 Витягую субтитри з YouTube...")
-        extracted = await extract_from_youtube(text)
+        result = await extract_from_youtube(text)
         await wait_yt.delete()
-        if not extracted:
-            await message.answer(
-                "❌ Не вдалося отримати субтитри з YouTube.\n"
-                "Можливо, у цього відео немає субтитрів."
-            )
+        if not result.ok:
+            await message.answer(f"❌ {result.error_message}")
             return
         await _process_text_content(
             message,
-            text=extracted,
+            text=result.text,
             source_url=text,
             source_type="youtube",
             title=f"📺 YouTube",
@@ -220,13 +239,13 @@ async def handle_text(message: types.Message) -> None:
         return
 
     if source_type == "url":
-        extracted = await extract_from_url(text)
-        if not extracted:
-            await message.answer("❌ Не вдалося витягнути текст з посилання.")
+        result = await extract_from_url(text)
+        if not result.ok:
+            await message.answer(f"❌ {result.error_message}")
             return
         await _process_text_content(
             message,
-            text=extracted,
+            text=result.text,
             source_url=text,
             source_type="url",
             title=None,
@@ -240,7 +259,7 @@ async def handle_text(message: types.Message) -> None:
         try:
             answer = await free_chat(text)
             await wait_msg.delete()
-            await message.answer(answer, parse_mode="HTML")
+            await send_llm_response(message, answer)
         except Exception as e:
             logger.exception("Chat error: %s", e)
             await wait_msg.delete()

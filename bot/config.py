@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     max_text_length: int = 50000
     # Max URL fetch requests per user per hour
     max_url_per_hour: int = 20
+    # Max extracted content length (chars) per single source — protects Groq/Whisper quota
+    max_content_chars: int = 120000
+    # Max YouTube video duration in minutes (0 = unlimited)
+    max_youtube_minutes: int = 90
 
     @property
     def allowed_user_ids(self) -> set[int]:

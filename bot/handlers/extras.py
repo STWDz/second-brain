@@ -25,8 +25,8 @@ from bot.db.repositories import (
     search_documents_text,
     toggle_pin,
 )
+from bot.services.formatting import send_llm_response
 from bot.services.openai_client import free_chat, generate_quiz, make_conspect, simplify_text
-from bot.services.rag import retrieve_context
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -99,7 +99,10 @@ async def quiz_callback(callback: CallbackQuery) -> None:
     chosen, correct, owner_id = parts[1], parts[2], parts[3]
 
     if str(callback.from_user.id) != owner_id:
-        await callback.answer("Це не твій квіз! 😏", show_alert=True)
+        await callback.answer(
+            "🔒 Це квіз іншого користувача. Відкрий /quiz у своєму чаті з ботом, щоб перевірити свою базу знань.",
+            show_alert=True,
+        )
         return
 
     if chosen == correct:
@@ -211,7 +214,10 @@ async def cmd_random(message: types.Message) -> None:
 async def random_callback(callback: CallbackQuery) -> None:
     owner_id = callback.data.split(":")[1]
     if str(callback.from_user.id) != owner_id:
-        await callback.answer("Це не твоя кнопка 😏", show_alert=True)
+        await callback.answer(
+            "🔒 Це нотатка іншого користувача. Надішли /random у своєму чаті з ботом.",
+            show_alert=True,
+        )
         return
 
     async with async_session() as session:
@@ -260,7 +266,10 @@ async def delete_callback(callback: CallbackQuery) -> None:
     doc_id, owner_id = int(parts[1]), parts[2]
 
     if str(callback.from_user.id) != owner_id:
-        await callback.answer("Це не твоя кнопка 😏", show_alert=True)
+        await callback.answer(
+            "🔒 Це нотатка іншого користувача — ти не можеш її видалити.",
+            show_alert=True,
+        )
         return
 
     # Verify document actually belongs to the user (defence in depth)
@@ -291,7 +300,10 @@ async def simplify_callback(callback: CallbackQuery) -> None:
     doc_id, owner_id = int(parts[1]), parts[2]
 
     if str(callback.from_user.id) != owner_id:
-        await callback.answer("Це не твоя кнопка 😏", show_alert=True)
+        await callback.answer(
+            "🔒 Це документ іншого користувача — ти не можеш його спростити.",
+            show_alert=True,
+        )
         return
 
     await callback.answer("🔄 Спрощую...")
@@ -306,8 +318,8 @@ async def simplify_callback(callback: CallbackQuery) -> None:
         return
 
     simple = await simplify_text(doc.summary)
-    await callback.message.answer(
-        f"🧒 <b>Пояснюю простіше:</b>\n\n{simple}", parse_mode="HTML"
+    await send_llm_response(
+        callback.message, f"🧒 <b>Пояснюю простіше:</b>\n\n{simple}"
     )
 
 
@@ -368,7 +380,7 @@ async def cmd_chat(message: types.Message, command: CommandObject) -> None:
     wait_msg = await message.answer("💭 Думаю...")
     answer = await free_chat(text)
     await wait_msg.delete()
-    await message.answer(answer, parse_mode="HTML")
+    await send_llm_response(message, answer)
 
 
 # ── /conspect ── Generate structured conspect from text ───────────────────
@@ -392,12 +404,7 @@ async def cmd_conspect(message: types.Message, command: CommandObject) -> None:
     try:
         result = await make_conspect(text)
         await wait_msg.delete()
-        # Split if too long for Telegram (4096 chars)
-        if len(result) > 4000:
-            for i in range(0, len(result), 4000):
-                await message.answer(result[i:i+4000], parse_mode="Markdown")
-        else:
-            await message.answer(result, parse_mode="Markdown")
+        await send_llm_response(message, result)
     except Exception as e:
         logger.exception("Conspect error: %s", e)
         await wait_msg.delete()
@@ -472,7 +479,10 @@ async def pin_callback(callback: CallbackQuery) -> None:
     doc_id, owner_id = int(parts[1]), parts[2]
 
     if str(callback.from_user.id) != owner_id:
-        await callback.answer("Це не твоя кнопка 😏", show_alert=True)
+        await callback.answer(
+            "🔒 Це документ іншого користувача — ти не можеш його закріпити.",
+            show_alert=True,
+        )
         return
 
     async with async_session() as session:

@@ -84,6 +84,24 @@ async def search_similar_chunks(
     return result.scalars().all()
 
 
+async def search_similar_chunks_with_docs(
+    session: AsyncSession,
+    user_id: int,
+    query_embedding: list[float],
+    top_k: int = 5,
+) -> Sequence[tuple[Chunk, Document]]:
+    """Like search_similar_chunks, but also returns the parent Document."""
+    stmt = (
+        select(Chunk, Document)
+        .join(Document, Chunk.document_id == Document.id)
+        .where(Document.user_id == user_id)
+        .order_by(Chunk.embedding.cosine_distance(query_embedding))
+        .limit(top_k)
+    )
+    result = await session.execute(stmt)
+    return result.all()
+
+
 async def get_user_documents(
     session: AsyncSession,
     user_id: int,
