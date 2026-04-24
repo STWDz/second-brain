@@ -1,27 +1,27 @@
 """Safe, idempotent DB migrator for the release_command step.
 
-Behavior:
-  1. Connect to DATABASE_URL.
-  2. If the `alembic_version` table already exists   -> run `alembic upgrade head`.
-  3. Else, if legacy tables exist (e.g. `users`)     -> stamp 001 (so Alembic
-     knows initial tables are there), then upgrade.
-  4. Else (fresh DB)                                 -> plain upgrade head.
+Design constraint: alembic/env.py calls `asyncio.run()` internally, so we
+can't invoke `command.stamp`/`command.upgrade` from our own running event
+loop (nested asyncio.run is forbidden). Instead we:
 
-This keeps a historical database created before Alembic was adopted working
-seamlessly, while new databases still get a clean migration history.
+  1. Use asyncpg directly (in its own run) to inspect DB state.
+  2. Spawn alembic via `subprocess` so env.py gets a fresh event loop.
+
+Behavior:
+  * alembic_version exists                        -> alembic upgrade head
+  * alembic_version missing AND users table exists -> stamp 001, then upgrade
+  * fresh DB                                       -> plain upgrade head
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import re
+import subprocess
 import sys
 
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine
-
-from alembic import command
-from alembic.config import Config
+import asyncpg
 
 from bot.config import settings
 
@@ -32,45 +32,48 @@ logging.basicConfig(
 logger = logging.getLogger("migrate")
 
 
-async def _db_state() -> tuple[bool, bool]:
-    """Return (has_alembic_version, has_legacy_users)."""
-    engine = create_async_engine(settings.database_url)
+def _asyncpg_dsn(url: str) -> str:
+    """SQLAlchemy URL -> bare postgres:// DSN that asyncpg understands."""
+    return re.sub(r"^postgresql\+asyncpg://", "postgresql://", url)
+
+
+async def _inspect_db() -> tuple[bool, bool]:
+    """Return (has_alembic_version, has_users_table)."""
+    dsn = _asyncpg_dsn(settings.database_url)
+    conn = await asyncpg.connect(dsn)
     try:
-        async with engine.connect() as conn:
-            alembic_exists = await conn.scalar(
-                text("SELECT to_regclass('public.alembic_version')")
-            )
-            users_exists = await conn.scalar(
-                text("SELECT to_regclass('public.users')")
-            )
-        return bool(alembic_exists), bool(users_exists)
+        alembic = await conn.fetchval("SELECT to_regclass('public.alembic_version')")
+        users = await conn.fetchval("SELECT to_regclass('public.users')")
+        return bool(alembic), bool(users)
     finally:
-        await engine.dispose()
+        await conn.close()
 
 
-def _alembic_cfg() -> Config:
-    return Config("alembic.ini")
+def _run_alembic(*args: str) -> None:
+    """Invoke alembic in a subprocess so env.py can own its event loop."""
+    cmd = [sys.executable, "-m", "alembic", *args]
+    logger.info("→ %s", " ".join(cmd))
+    result = subprocess.run(cmd, check=False)
+    if result.returncode != 0:
+        raise SystemExit(
+            f"alembic {' '.join(args)} failed with exit code {result.returncode}"
+        )
 
 
-async def main() -> int:
-    cfg = _alembic_cfg()
-    has_alembic, has_users = await _db_state()
-
-    logger.info(
-        "DB state: alembic_version=%s users=%s", has_alembic, has_users
-    )
+def main() -> int:
+    has_alembic, has_users = asyncio.run(_inspect_db())
+    logger.info("DB state: alembic_version=%s users=%s", has_alembic, has_users)
 
     if not has_alembic and has_users:
         logger.info(
             "Legacy DB detected (tables exist without alembic_version) — stamping 001"
         )
-        command.stamp(cfg, "001")
+        _run_alembic("stamp", "001")
 
-    logger.info("Running: alembic upgrade head")
-    command.upgrade(cfg, "head")
+    _run_alembic("upgrade", "head")
     logger.info("Migrations complete.")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main()))
+    sys.exit(main())
