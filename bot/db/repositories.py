@@ -1,7 +1,7 @@
 import json
 from typing import Optional, Sequence
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.db.models import Chunk, Document, User
@@ -313,3 +313,47 @@ async def get_user_tags(session: AsyncSession, user_id: int) -> list[str]:
         except (json.JSONDecodeError, TypeError):
             pass
     return sorted(all_tags)
+
+
+# ── Global / admin-only queries ────────────────────────────────────────────
+
+
+async def get_global_stats(session: AsyncSession) -> dict:
+    """Aggregate counts across all users — for admin /admin_stats."""
+    total_users = (await session.execute(select(func.count(User.id)))).scalar_one()
+    total_docs = (await session.execute(select(func.count(Document.id)))).scalar_one()
+    total_chunks = (await session.execute(select(func.count(Chunk.id)))).scalar_one()
+    by_type_rows = await session.execute(
+        select(Document.source_type, func.count(Document.id)).group_by(
+            Document.source_type
+        )
+    )
+    by_type = {row[0]: row[1] for row in by_type_rows}
+    active_7d = (
+        await session.execute(
+            select(func.count(func.distinct(Document.user_id))).where(
+                Document.created_at >= text("NOW() - INTERVAL '7 days'")
+            )
+        )
+    ).scalar_one()
+    return {
+        "users": total_users,
+        "documents": total_docs,
+        "chunks": total_chunks,
+        "by_type": by_type,
+        "active_7d": active_7d,
+    }
+
+
+async def list_recent_users(
+    session: AsyncSession, limit: int = 20
+) -> Sequence[User]:
+    stmt = select(User).order_by(User.created_at.desc()).limit(limit)
+    result = await session.execute(stmt)
+    return result.scalars().all()
+
+
+async def list_all_telegram_ids(session: AsyncSession) -> list[int]:
+    """Telegram IDs of every registered user — used for admin broadcasts."""
+    result = await session.execute(select(User.telegram_id))
+    return [row[0] for row in result]

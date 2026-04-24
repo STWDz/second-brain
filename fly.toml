@@ -5,7 +5,26 @@ primary_region = "ams"
   dockerfile = "Dockerfile"
 
 [env]
-  # Secrets (BOT_TOKEN, API keys, DATABASE_URL) are set via `flyctl secrets set`
+  # Non-secret defaults. Secrets (BOT_TOKEN, API keys, DATABASE_URL,
+  # WEBHOOK_SECRET, REDIS_URL) go via `flyctl secrets set`.
+  WEB_PORT = "8080"
+  # Webhook public URL (this app's fly.dev domain)
+  WEBHOOK_PUBLIC_URL = "https://stwdz-second-brain.fly.dev"
+  WEBHOOK_PATH = "/tg/webhook"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "get"
+    path = "/health"
 
 [[vm]]
   size = "shared-cpu-1x"

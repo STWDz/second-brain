@@ -8,7 +8,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot.config import settings
 from bot.db.engine import async_session
-from bot.db.repositories import create_document, get_or_create_user
+from bot.db.repositories import create_document, get_document_by_id, get_or_create_user
 from bot.services.content import (
     detect_source_type,
     extract_from_pdf,
@@ -16,6 +16,12 @@ from bot.services.content import (
     extract_from_youtube,
 )
 from bot.services.formatting import send_llm_response
+from bot.services.notion import (
+    NotionError,
+    decrypt_token,
+    get_integration,
+    push_document,
+)
 from bot.services.openai_client import free_chat, generate_tags, summarize_text
 from bot.services.rag import embed_and_store_chunks
 
@@ -50,6 +56,33 @@ async def _animate_progress(wait_msg: types.Message, stop_event: asyncio.Event) 
     # Hold at last frame
     while not stop_event.is_set():
         await asyncio.sleep(0.5)
+
+
+async def _maybe_auto_sync_notion(doc_id: int, user_id: int) -> None:
+    """Push a freshly saved document to Notion if the user opted in.
+
+    Runs as a fire-and-forget task: any failure is logged but never surfaced
+    to the user so the save pipeline stays responsive.
+    """
+    try:
+        async with async_session() as session:
+            integration = await get_integration(session, user_id)
+            if integration is None or not integration.auto_sync:
+                return
+            doc = await get_document_by_id(session, doc_id)
+            if doc is None:
+                return
+            token = decrypt_token(integration.token_encrypted)
+            if token is None:
+                return
+            await push_document(token, integration.database_id, doc)
+            integration.last_synced_document_id = doc_id
+            await session.commit()
+            logger.info("Auto-synced doc %d to Notion for user %d", doc_id, user_id)
+    except NotionError as e:
+        logger.warning("Notion auto-sync failed for doc %d: %s", doc_id, e)
+    except Exception as e:
+        logger.exception("Notion auto-sync crashed for doc %d: %s", doc_id, e)
 
 
 async def _process_text_content(
@@ -94,9 +127,13 @@ async def _process_text_content(
             chunk_count = await embed_and_store_chunks(session, doc.id, text)
             await session.commit()
             doc_id = doc.id
+            user_id = user.id
 
         stop_event.set()
         await progress_task
+
+        # Fire-and-forget: push to Notion if the user connected it with auto_sync on
+        asyncio.create_task(_maybe_auto_sync_notion(doc_id, user_id))
 
         tags_str = " ".join(tags) if tags else "—"
         result_text = (
@@ -114,14 +151,20 @@ async def _process_text_content(
                         callback_data=f"simplify:{doc_id}:{message.from_user.id}",
                     ),
                     InlineKeyboardButton(
-                        text="📌 Закріпити",
+                        text="� Озвучити",
+                        callback_data=f"tts:{doc_id}:{message.from_user.id}",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="�📌 Закріпити",
                         callback_data=f"pin:{doc_id}:{message.from_user.id}",
                     ),
                     InlineKeyboardButton(
                         text="🗑 Видалити",
                         callback_data=f"del:{doc_id}:{message.from_user.id}",
                     ),
-                ]
+                ],
             ]
         )
 

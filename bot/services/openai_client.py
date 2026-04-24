@@ -31,6 +31,7 @@ from bot.prompts import (
     SYSTEM_PROMPT,
     TAG_PROMPT,
 )
+from bot.services.cache import cache_get_json, cache_set_json, text_key
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +195,12 @@ async def _openai_embed(texts: list[str]) -> list[list[float]]:
     return [item.embedding for item in response.data]
 
 
+def _embedding_model_name() -> str:
+    if settings.embedding_provider == "openai":
+        return settings.openai_embedding_model
+    return settings.hf_embedding_model
+
+
 async def get_embedding(text: str) -> list[float]:
     """Get embedding vector for a single text."""
     text = text.replace("\n", " ").strip()
@@ -202,11 +209,46 @@ async def get_embedding(text: str) -> list[float]:
 
 
 async def get_embeddings_batch(texts: list[str]) -> list[list[float]]:
-    """Get embeddings for a batch of texts using the configured provider."""
+    """Get embeddings for a batch of texts using the configured provider.
+
+    Cache hits are served from Redis (or in-memory fallback); misses go to the
+    configured embedding provider and are written back to cache.
+    """
     cleaned = [t.replace("\n", " ").strip() for t in texts]
+    model = _embedding_model_name()
+
+    # Look up cached embeddings in parallel
+    keys = [text_key(f"emb:{model}", t) for t in cleaned]
+    cached_results = await asyncio.gather(
+        *(cache_get_json(k) for k in keys), return_exceptions=False
+    )
+
+    results: list[Optional[list[float]]] = [
+        c if isinstance(c, list) else None for c in cached_results
+    ]
+    missing_indices = [i for i, r in enumerate(results) if r is None]
+    if not missing_indices:
+        return [r for r in results if r is not None]  # all hits
+
+    missing_texts = [cleaned[i] for i in missing_indices]
+    logger.debug(
+        "Embeddings: %d cache hits, %d misses", len(texts) - len(missing_indices), len(missing_indices)
+    )
+
     if settings.embedding_provider == "openai":
-        return await _openai_embed(cleaned)
-    return await _hf_embed(cleaned)
+        fresh = await _openai_embed(missing_texts)
+    else:
+        fresh = await _hf_embed(missing_texts)
+
+    # Fill in and write-through
+    ttl = settings.embedding_cache_ttl
+    writeback = []
+    for idx, vec in zip(missing_indices, fresh):
+        results[idx] = vec
+        writeback.append(cache_set_json(keys[idx], vec, ttl))
+    await asyncio.gather(*writeback, return_exceptions=True)
+
+    return [r for r in results if r is not None]
 
 
 # ---------------------------------------------------------------------------

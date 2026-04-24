@@ -3,10 +3,10 @@
 import asyncio
 import logging
 import logging.handlers
-import os
 
 from aiohttp import web
 from aiogram import Bot, Dispatcher
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
 from bot.config import settings
 from bot.handlers import main_router
@@ -45,8 +45,7 @@ except OSError:
     audit_logger.addHandler(logging.StreamHandler())
 
 
-async def main() -> None:
-    bot = Bot(token=settings.bot_token)
+def _build_dispatcher(bot: Bot) -> Dispatcher:
     dp = Dispatcher()
 
     # ── Security middleware stack (order matters!) ──
@@ -70,20 +69,88 @@ async def main() -> None:
     dp.callback_query.middleware(AuditLogMiddleware())
 
     dp.include_router(main_router)
+    return dp
+
+
+async def _health(_: web.Request) -> web.Response:
+    return web.Response(text="ok")
+
+
+def _build_public_app() -> web.Application:
+    """Public aiohttp app: /health + Mini App API under /api."""
+    app = web.Application()
+    app.router.add_get("/health", _health)
+    # Mount the WebApp API as a sub-app (all routes live under /api/*)
+    app.add_subapp("/", create_webapp_app())
+    return app
+
+
+async def _run_polling(bot: Bot, dp: Dispatcher) -> None:
+    """Polling mode — good for local dev; also runs the health/API server."""
+    app = _build_public_app()
+    runner = web.AppRunner(app)
+    await runner.setup()
+    # Keep 127.0.0.1 in polling mode: this is dev, we don't want to expose webapp
+    site = web.TCPSite(runner, "127.0.0.1", settings.web_port)
+    await site.start()
+    logger.info("HTTP (polling mode) on http://127.0.0.1:%d", settings.web_port)
+
+    # Clear any stale webhook before polling so we don't get 409 Conflict
+    await bot.delete_webhook(drop_pending_updates=False)
+    logger.info("Starting long polling...")
+    try:
+        await dp.start_polling(bot)
+    finally:
+        await runner.cleanup()
+
+
+async def _run_webhook(bot: Bot, dp: Dispatcher) -> None:
+    """Webhook mode — Telegram POSTs updates to us via HTTPS."""
+    public_url = settings.webhook_public_url.rstrip("/")
+    if not public_url:
+        raise RuntimeError(
+            "USE_WEBHOOK=1 requires WEBHOOK_PUBLIC_URL "
+            "(e.g. https://stwdz-second-brain.fly.dev)"
+        )
+
+    full_webhook_url = public_url + settings.webhook_path
+    await bot.set_webhook(
+        url=full_webhook_url,
+        secret_token=settings.webhook_secret or None,
+        drop_pending_updates=False,
+        allowed_updates=dp.resolve_used_update_types(),
+    )
+    logger.info("Webhook registered: %s", full_webhook_url)
+
+    app = _build_public_app()
+    SimpleRequestHandler(
+        dispatcher=dp,
+        bot=bot,
+        secret_token=settings.webhook_secret or None,
+    ).register(app, path=settings.webhook_path)
+    setup_application(app, dp, bot=bot)
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", settings.web_port)
+    await site.start()
+    logger.info("Webhook server on 0.0.0.0:%d%s", settings.web_port, settings.webhook_path)
+
+    # Run forever
+    try:
+        await asyncio.Event().wait()
+    finally:
+        await runner.cleanup()
+
+
+async def main() -> None:
+    bot = Bot(token=settings.bot_token)
+    dp = _build_dispatcher(bot)
 
     # Scheduler
     scheduler = setup_scheduler(bot)
     scheduler.start()
     logger.info("Scheduler started (Daily Digest at %02d:00)", settings.daily_digest_hour)
-
-    # Web API for Mini App — bind to 127.0.0.1 (not exposed to internet)
-    webapp = create_webapp_app()
-    runner = web.AppRunner(webapp)
-    await runner.setup()
-    bind_host = "127.0.0.1"
-    site = web.TCPSite(runner, bind_host, 8080)
-    await site.start()
-    logger.info("Web API started on http://%s:8080", bind_host)
 
     # Security summary on startup
     wl = settings.allowed_user_ids
@@ -95,13 +162,16 @@ async def main() -> None:
         settings.max_text_length,
     )
 
-    # Start polling
-    logger.info("Bot is starting...")
+    mode = "webhook" if settings.use_webhook else "polling"
+    logger.info("Bot starting in %s mode...", mode)
+
     try:
-        await dp.start_polling(bot)
+        if settings.use_webhook:
+            await _run_webhook(bot, dp)
+        else:
+            await _run_polling(bot, dp)
     finally:
         scheduler.shutdown()
-        await runner.cleanup()
         await bot.session.close()
 
 

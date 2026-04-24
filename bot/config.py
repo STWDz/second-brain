@@ -24,6 +24,29 @@ class Settings(BaseSettings):
     # Max YouTube video duration in minutes (0 = unlimited)
     max_youtube_minutes: int = 90
 
+    # ── Webhook mode (opt-in; defaults to polling) ──
+    # When True, bot receives updates via Telegram webhook instead of long polling.
+    use_webhook: bool = False
+    # Publicly reachable HTTPS base URL, e.g. "https://stwdz-second-brain.fly.dev"
+    webhook_public_url: str = ""
+    # Path where Telegram will POST updates. Must be random/secret-like.
+    webhook_path: str = "/tg/webhook"
+    # Optional secret token header Telegram attaches to every request
+    webhook_secret: str = ""
+    # Port the internal HTTP server listens on (Fly proxies :443 -> this port)
+    web_port: int = 8080
+
+    # ── Redis cache (opt-in) ──
+    # If set (e.g. redis://default:pass@host:6379), embeddings and LLM responses
+    # are cached there. When empty, falls back to in-process LRU.
+    redis_url: str = ""
+    # TTL for cached embeddings (seconds). 30 days is safe — model is stable.
+    embedding_cache_ttl: int = 60 * 60 * 24 * 30
+
+    # ── Notion integration (per-user tokens are stored in DB) ──
+    # If set, enables the /notion_* commands. Used only as a feature flag.
+    notion_enabled: bool = True
+
     @property
     def allowed_user_ids(self) -> set[int]:
         if not self.allowed_users.strip():

@@ -333,11 +333,11 @@ cd webapp && npm install && npm run build
 - [x] ІІ-чат без команд
 - [x] Конспекти /conspect
 - [x] Українська локалізація
-- [ ] Webhook mode (Nginx reverse proxy)
-- [ ] Redis кеш ембедінгів
-- [ ] TTS — голосові відповіді
-- [ ] Notion / Obsidian sync
-- [ ] Admin-панель
+- [x] Webhook mode (Fly HTTPS edge)
+- [x] Redis кеш ембедінгів (з fallback на in-memory)
+- [x] TTS — голосові відповіді (`/tts` + кнопка на нотатках)
+- [x] Notion sync + Obsidian export (ZIP з YAML frontmatter)
+- [x] Admin-панель (`/admin_stats`, `/admin_users`, `/admin_broadcast`)
 
 ---
 

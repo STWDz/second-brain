@@ -3,6 +3,8 @@
 import io
 import json
 import logging
+import re
+import zipfile
 
 from aiogram import F, Router, types
 from aiogram.filters import Command, CommandObject
@@ -362,6 +364,91 @@ async def cmd_export(message: types.Message) -> None:
 
     await wait_msg.delete()
     await message.answer_document(file, caption=f"📦 Експорт: {len(docs)} нотаток")
+
+
+# ── /export_obsidian ── One .md per note, zipped (Obsidian-friendly) ───────
+
+
+_SLUG_RE = re.compile(r"[^\w\s-]", re.UNICODE)
+
+
+def _slugify(text: str, fallback: str) -> str:
+    """Make a filesystem-safe filename from a title."""
+    text = _SLUG_RE.sub("", text).strip()
+    text = re.sub(r"\s+", "-", text)
+    return (text[:80] or fallback).strip("-") or fallback
+
+
+@router.message(Command("export_obsidian"))
+async def cmd_export_obsidian(message: types.Message) -> None:
+    wait_msg = await message.answer("📦 Готую Obsidian-vault ZIP...")
+
+    async with async_session() as session:
+        user = await get_or_create_user(session, telegram_id=message.from_user.id)
+        docs = await get_user_documents(session, user.id, limit=1000)
+
+    if not docs:
+        await wait_msg.delete()
+        await message.answer("📭 Нема що експортувати.")
+        return
+
+    buf = io.BytesIO()
+    used_names: set[str] = set()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for doc in docs:
+            title = doc.title or "Без назви"
+            base = _slugify(title, fallback=f"note-{doc.id}")
+            # Deduplicate file names across the vault
+            name = base
+            counter = 2
+            while name in used_names:
+                name = f"{base}-{counter}"
+                counter += 1
+            used_names.add(name)
+
+            tags_yaml = ""
+            try:
+                tag_list = json.loads(doc.tags) if doc.tags else []
+            except (ValueError, TypeError):
+                tag_list = []
+            if tag_list:
+                clean = [str(t).lstrip("#") for t in tag_list if t]
+                tags_yaml = "tags:\n" + "\n".join(f"  - {t}" for t in clean) + "\n"
+
+            created = (
+                doc.created_at.isoformat() if doc.created_at else ""
+            )
+            safe_title = title.replace('"', "'")
+
+            frontmatter = (
+                "---\n"
+                f'title: "{safe_title}"\n'
+                f"created: {created}\n"
+                f"source_type: {doc.source_type}\n"
+                + (f"source: {doc.source_url}\n" if doc.source_url else "")
+                + tags_yaml
+                + ("pinned: true\n" if doc.is_pinned else "")
+                + "---\n\n"
+            )
+            body = doc.summary or ""
+            zf.writestr(f"{name}.md", frontmatter + body)
+
+        # Small README inside the vault
+        readme = (
+            "# Cortex → Obsidian\n\n"
+            "Це експорт твоєї бази знань з бота Cortex.\n"
+            "Просто розпакуй цей ZIP у свій Obsidian Vault — кожна нотатка стане окремим файлом, "
+            "з YAML frontmatter (теги, джерело, дата).\n"
+        )
+        zf.writestr("README.md", readme)
+
+    buf.seek(0)
+    file = BufferedInputFile(buf.read(), filename="cortex-obsidian-vault.zip")
+
+    await wait_msg.delete()
+    await message.answer_document(
+        file, caption=f"📦 Obsidian vault: {len(docs)} нотаток у ZIP"
+    )
 
 
 # ── /chat ── Free chat with AI ────────────────────────────────────────────

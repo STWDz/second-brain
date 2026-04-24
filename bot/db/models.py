@@ -71,3 +71,22 @@ class Chunk(Base):
             postgresql_ops={"embedding": "vector_cosine_ops"},
         ),
     )
+
+
+class NotionIntegration(Base):
+    """Per-user Notion connection. Tokens are stored encrypted at rest."""
+    __tablename__ = "notion_integrations"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), unique=True
+    )
+    # Fernet-encrypted integration token (ciphertext, base64)
+    token_encrypted: Mapped[str] = mapped_column(Text)
+    # Notion database id (UUID without dashes or with dashes — both accepted)
+    database_id: Mapped[str] = mapped_column(String(64))
+    auto_sync: Mapped[bool] = mapped_column(default=True)
+    last_synced_document_id: Mapped[Optional[int]] = mapped_column(nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
