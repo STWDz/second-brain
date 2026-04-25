@@ -5,6 +5,7 @@ from bot.handlers.commands import router as commands_router
 from bot.handlers.content import router as content_router
 from bot.handlers.extras import router as extras_router
 from bot.handlers.inline import router as inline_router
+from bot.handlers.menu import router as menu_router
 from bot.handlers.notion import router as notion_router
 from bot.handlers.tts import router as tts_router
 from bot.handlers.voice import router as voice_router
@@ -17,4 +18,7 @@ main_router.include_router(tts_router)
 main_router.include_router(notion_router)
 main_router.include_router(voice_router)
 main_router.include_router(inline_router)
+# menu_router MUST come before content_router so button taps beat the
+# catch-all F.text handler in content.py.
+main_router.include_router(menu_router)
 main_router.include_router(content_router)

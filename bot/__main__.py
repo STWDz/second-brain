@@ -6,6 +6,7 @@ import logging.handlers
 
 from aiohttp import web
 from aiogram import Bot, Dispatcher
+from aiogram.types import BotCommand
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
 from bot.config import settings
@@ -147,9 +148,38 @@ async def _run_webhook(bot: Bot, dp: Dispatcher) -> None:
         await runner.cleanup()
 
 
+async def _set_bot_commands(bot: Bot) -> None:
+    """Register the slash-menu shown by Telegram when the user types '/'.
+
+    Keep the list short — menu buttons already cover the daily actions.
+    These are the advanced/rare commands worth discovering via the "/" UI.
+    """
+    commands = [
+        BotCommand(command="start", description="Початок + головне меню"),
+        BotCommand(command="menu", description="Показати меню знову"),
+        BotCommand(command="help", description="Повна довідка"),
+        BotCommand(command="ask", description="Спитати по своїй базі знань"),
+        BotCommand(command="search", description="Швидкий текстовий пошук"),
+        BotCommand(command="random", description="Випадкова нотатка"),
+        BotCommand(command="quiz", description="Квіз по твоїх матеріалах"),
+        BotCommand(command="pinned", description="Закріплені нотатки"),
+        BotCommand(command="stats", description="Статистика"),
+        BotCommand(command="conspect", description="Конспект із тексту"),
+        BotCommand(command="tts", description="Озвучити текст"),
+        BotCommand(command="export", description="Експорт у Markdown"),
+    ]
+    try:
+        await bot.set_my_commands(commands)
+    except Exception as e:
+        logger.warning("Failed to register bot commands: %s", e)
+
+
 async def main() -> None:
     bot = Bot(token=settings.bot_token)
     dp = _build_dispatcher(bot)
+
+    # Register the Telegram "/" menu so users discover commands visually.
+    await _set_bot_commands(bot)
 
     # Scheduler
     scheduler = setup_scheduler(bot)

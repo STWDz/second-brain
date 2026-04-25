@@ -453,9 +453,9 @@ async def cmd_export_obsidian(message: types.Message) -> None:
 
 # ── /chat ── Free chat with AI ────────────────────────────────────────────
 
-@router.message(Command("chat"))
-async def cmd_chat(message: types.Message, command: CommandObject) -> None:
-    text = command.args
+async def answer_chat(message: types.Message, text: str) -> None:
+    """Core free-chat logic. Re-usable from /chat and the menu button."""
+    text = (text or "").strip()
     if not text:
         await message.answer(
             "💬 Використовуй: /chat <i>будь-що</i>\n\n"
@@ -463,22 +463,23 @@ async def cmd_chat(message: types.Message, command: CommandObject) -> None:
             parse_mode="HTML",
         )
         return
-
     wait_msg = await message.answer("💭 Думаю...")
     answer = await free_chat(text)
     await wait_msg.delete()
     await send_llm_response(message, answer)
 
 
+@router.message(Command("chat"))
+async def cmd_chat(message: types.Message, command: CommandObject) -> None:
+    await answer_chat(message, command.args or "")
+
+
 # ── /conspect ── Generate structured conspect from text ───────────────────
 
-@router.message(Command("conspect"))
-async def cmd_conspect(message: types.Message, command: CommandObject) -> None:
-    text = command.args
-    # Also support reply to a message
-    if not text and message.reply_to_message and message.reply_to_message.text:
-        text = message.reply_to_message.text
-    if not text or len(text.strip()) < 30:
+async def answer_conspect(message: types.Message, text: str) -> None:
+    """Core conspect logic. Re-usable from /conspect and the menu button."""
+    text = (text or "").strip()
+    if not text or len(text) < 30:
         await message.answer(
             "📋 Використовуй: /conspect <i>текст</i>\n\n"
             "Або відповідж на повідомлення командою /conspect — зроблю конспект.\n"
@@ -498,12 +499,20 @@ async def cmd_conspect(message: types.Message, command: CommandObject) -> None:
         await message.answer("❌ Не вдалося зробити конспект. Спробуй ще раз.")
 
 
-# ── /search ── Text search across notes ────────────────────────────────────
+@router.message(Command("conspect"))
+async def cmd_conspect(message: types.Message, command: CommandObject) -> None:
+    text = command.args
+    if not text and message.reply_to_message and message.reply_to_message.text:
+        text = message.reply_to_message.text
+    await answer_conspect(message, text)
 
-@router.message(Command("search"))
-async def cmd_search(message: types.Message, command: CommandObject) -> None:
-    query = command.args
-    if not query or len(query.strip()) < 2:
+
+# ── /search ── Text search across notes ──────────────────────────────────────
+
+async def answer_search(message: types.Message, query: str) -> None:
+    """Core text-search logic. Re-usable from /search and the menu button."""
+    query = (query or "").strip()
+    if len(query) < 2:
         await message.answer(
             "🔍 Використовуй: /search <i>ключове слово</i>", parse_mode="HTML"
         )
@@ -511,10 +520,10 @@ async def cmd_search(message: types.Message, command: CommandObject) -> None:
 
     async with async_session() as session:
         user = await get_or_create_user(session, telegram_id=message.from_user.id)
-        docs = await search_documents_text(session, user.id, query.strip())
+        docs = await search_documents_text(session, user.id, query)
 
     if not docs:
-        await message.answer(f"🔍 За запитом «{query}» нічого не знайдено.")
+        await message.answer(f"🔍 За запитом «{tg_escape(query)}» нічого не знайдено.")
         return
 
     lines = [f"🔍 <b>Результати за «{tg_escape(query)}»:</b>\n"]
@@ -530,6 +539,11 @@ async def cmd_search(message: types.Message, command: CommandObject) -> None:
             lines.append(f"   <i>{tg_escape(preview)}...</i>")
 
     await message.answer("\n".join(lines), parse_mode="HTML")
+
+
+@router.message(Command("search"))
+async def cmd_search(message: types.Message, command: CommandObject) -> None:
+    await answer_search(message, command.args or "")
 
 
 # ── /pinned ── Show pinned notes ───────────────────────────────────────────
